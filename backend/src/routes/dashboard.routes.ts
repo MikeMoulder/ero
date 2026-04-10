@@ -21,11 +21,11 @@ function computePaymentSubset(payments: { status: string; amount: number }[]): P
   };
 }
 
-dashboardRouter.get('/stats', (req, res) => {
+dashboardRouter.get('/stats', async (req, res) => {
   const userPublicKey = req.query.userPublicKey as string | undefined;
-  const apis = userPublicKey ? store.getApisByOwner(userPublicKey) : store.getAllApis();
-  const payments = userPublicKey ? store.getPaymentsByUser(userPublicKey) : store.getAllPayments();
-  const tasks = userPublicKey ? store.getTasksByUser(userPublicKey) : store.getAllTasks();
+  const apis = userPublicKey ? await store.getApisByOwner(userPublicKey) : await store.getAllApis();
+  const payments = userPublicKey ? await store.getPaymentsByUser(userPublicKey) : await store.getAllPayments();
+  const tasks = userPublicKey ? await store.getTasksByUser(userPublicKey) : await store.getAllTasks();
 
 
   // === Gateway Metrics (user-created APIs only, excludes seeded catalog/playground APIs) ===
@@ -135,7 +135,7 @@ dashboardRouter.get('/stats', (req, res) => {
     overview,
     gateway,
     playground,
-    recentLogs: userPublicKey ? store.getRecentLogsByUser(userPublicKey, 30) : store.getRecentLogs(30),
+    recentLogs: userPublicKey ? await store.getRecentLogsByUser(userPublicKey, 30) : await store.getRecentLogs(30),
     recentPayments: payments.slice(0, 10),
   };
 

@@ -3,16 +3,16 @@ import { store } from '../store/memory.store';
 
 export const paymentsRouter = Router();
 
-paymentsRouter.get('/', (req, res) => {
+paymentsRouter.get('/', async (req, res) => {
   const userPublicKey = req.query.userPublicKey as string | undefined;
   if (userPublicKey) {
-    return res.json(store.getPaymentsByUser(userPublicKey));
+    return res.json(await store.getPaymentsByUser(userPublicKey));
   }
-  res.json(store.getAllPayments());
+  res.json(await store.getAllPayments());
 });
 
-paymentsRouter.get('/:id', (req, res) => {
-  const payment = store.getPayment(req.params.id);
+paymentsRouter.get('/:id', async (req, res) => {
+  const payment = await store.getPayment(req.params.id);
   if (!payment) {
     return res.status(404).json({ error: 'Payment not found' });
   }

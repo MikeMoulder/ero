@@ -25,7 +25,7 @@ class AgentWalletService {
   }
 
   private async _getOrCreateWalletImpl(userPublicKey: string): Promise<AgentWallet> {
-    const existing = walletStore.getWallet(userPublicKey);
+    const existing = await walletStore.getWallet(userPublicKey);
 
     if (existing) {
       // Verify we can still decrypt the secret — if not, delete and recreate (non-recursive)
@@ -33,7 +33,7 @@ class AgentWalletService {
         decrypt(existing.agent_secret_key_enc);
       } catch {
         console.warn(`[AgentWallet] Stale wallet for ${userPublicKey.slice(0, 8)}..., recreating`);
-        walletStore.deleteWallet(userPublicKey);
+        await walletStore.deleteWallet(userPublicKey);
         return this._createNewWallet(userPublicKey);
       }
       return this.enrichWallet(existing);
@@ -46,7 +46,7 @@ class AgentWalletService {
     const keypair = StellarSdk.Keypair.random();
     const encryptedSecret = encrypt(keypair.secret());
 
-    const row = walletStore.createWallet(
+    const row = await walletStore.createWallet(
       userPublicKey,
       keypair.publicKey(),
       encryptedSecret
@@ -65,13 +65,13 @@ class AgentWalletService {
   }
 
   async getWallet(userPublicKey: string): Promise<AgentWallet | null> {
-    const row = walletStore.getWallet(userPublicKey);
+    const row = await walletStore.getWallet(userPublicKey);
     if (!row) return null;
     return this.enrichWallet(row);
   }
 
-  getKeypair(userPublicKey: string): StellarSdk.Keypair {
-    const row = walletStore.getWallet(userPublicKey);
+  async getKeypair(userPublicKey: string): Promise<StellarSdk.Keypair> {
+    const row = await walletStore.getWallet(userPublicKey);
     if (!row) throw new Error('Agent wallet not found');
 
     try {
@@ -80,13 +80,13 @@ class AgentWalletService {
     } catch (err: any) {
       // If decryption fails (e.g. key changed after server restart), recreate wallet
       console.warn(`[AgentWallet] Decryption failed for ${userPublicKey.slice(0, 8)}..., recreating wallet`);
-      walletStore.deleteWallet(userPublicKey);
+      await walletStore.deleteWallet(userPublicKey);
       throw new Error('Agent wallet corrupted — please reconnect your wallet to create a new one');
     }
   }
 
   async buildActivationTx(userPublicKey: string, xlmAmount: number = 5): Promise<string> {
-    const row = walletStore.getWallet(userPublicKey);
+    const row = await walletStore.getWallet(userPublicKey);
     if (!row) throw new Error('Agent wallet not found');
 
     return stellarService.buildActivationTx(
@@ -97,18 +97,18 @@ class AgentWalletService {
   }
 
   async submitActivation(userPublicKey: string, signedTxXdr: string): Promise<{ activated: boolean; agentPublicKey: string }> {
-    const row = walletStore.getWallet(userPublicKey);
+    const row = await walletStore.getWallet(userPublicKey);
     if (!row) throw new Error('Agent wallet not found');
 
     // Submit the createAccount TX
     await stellarService.submitSignedActivationTx(signedTxXdr);
 
     // Set up USDC trustline (server-signed)
-    const keypair = this.getKeypair(userPublicKey);
+    const keypair = await this.getKeypair(userPublicKey);
     await stellarService.setupUserAgentUsdc(keypair);
 
     // Mark activated in DB
-    walletStore.markActivated(userPublicKey);
+    await walletStore.markActivated(userPublicKey);
 
     events.log('info', 'AgentWallet', `Activated agent wallet for ${userPublicKey.slice(0, 8)}...`, undefined, userPublicKey);
 
@@ -116,7 +116,7 @@ class AgentWalletService {
   }
 
   async buildFundTx(userPublicKey: string, amount: number): Promise<{ unsignedTxXdr: string; agentPublicKey: string }> {
-    const row = walletStore.getWallet(userPublicKey);
+    const row = await walletStore.getWallet(userPublicKey);
     if (!row) throw new Error('Agent wallet not found');
 
     const unsignedTxXdr = await stellarService.buildFundAgentTx(
@@ -129,7 +129,7 @@ class AgentWalletService {
   }
 
   async withdraw(userPublicKey: string, amount: number): Promise<{ txHash: string; newBalance: number }> {
-    const row = walletStore.getWallet(userPublicKey);
+    const row = await walletStore.getWallet(userPublicKey);
     if (!row) throw new Error('Agent wallet not found');
 
     // Check balance
@@ -138,7 +138,7 @@ class AgentWalletService {
       throw new Error(`Insufficient balance: ${balance.toFixed(2)} USDC < ${amount.toFixed(2)} USDC`);
     }
 
-    const keypair = this.getKeypair(userPublicKey);
+    const keypair = await this.getKeypair(userPublicKey);
     const txHash = await stellarService.buildAndSubmitWithdrawTx(keypair, userPublicKey, amount);
 
     const newBalance = await stellarService.getBalance(row.agent_public_key);
@@ -155,7 +155,7 @@ class AgentWalletService {
 
     // Sync activation status with DB if it changed
     if (activation.activated && !row.activated) {
-      walletStore.markActivated(row.user_public_key);
+      await walletStore.markActivated(row.user_public_key);
     }
 
     return {

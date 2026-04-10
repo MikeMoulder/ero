@@ -8,7 +8,7 @@ export const tasksRouter = Router();
 
 const MAX_PROMPT_LENGTH = 2000;
 
-tasksRouter.post('/', sensitiveLimiter, (req, res) => {
+tasksRouter.post('/', sensitiveLimiter, async (req, res) => {
   try {
     const { prompt, userPublicKey } = req.body;
     if (!prompt || typeof prompt !== 'string') {
@@ -20,31 +20,31 @@ tasksRouter.post('/', sensitiveLimiter, (req, res) => {
     if (!userPublicKey || typeof userPublicKey !== 'string') {
       return res.status(400).json({ error: 'userPublicKey is required' });
     }
-    const task = agentService.createTask(prompt, userPublicKey);
+    const task = await agentService.createTask(prompt, userPublicKey);
     res.status(201).json(task);
   } catch (err: any) {
     res.status(400).json({ error: safeErrorMessage(err) });
   }
 });
 
-tasksRouter.get('/', (req, res) => {
+tasksRouter.get('/', async (req, res) => {
   const userPublicKey = req.query.userPublicKey as string | undefined;
   if (userPublicKey) {
-    return res.json(store.getTasksByUser(userPublicKey));
+    return res.json(await store.getTasksByUser(userPublicKey));
   }
-  res.json(store.getAllTasks());
+  res.json(await store.getAllTasks());
 });
 
-tasksRouter.get('/:id', (req, res) => {
-  const task = store.getTask(req.params.id);
+tasksRouter.get('/:id', async (req, res) => {
+  const task = await store.getTask(req.params.id);
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }
   res.json(task);
 });
 
-tasksRouter.post('/:id/execute', sensitiveLimiter, (req, res) => {
-  const task = store.getTask(req.params.id);
+tasksRouter.post('/:id/execute', sensitiveLimiter, async (req, res) => {
+  const task = await store.getTask(req.params.id);
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }
@@ -58,8 +58,8 @@ tasksRouter.post('/:id/execute', sensitiveLimiter, (req, res) => {
   });
 });
 
-tasksRouter.post('/:id/approve', sensitiveLimiter, (req, res) => {
-  const task = store.getTask(req.params.id);
+tasksRouter.post('/:id/approve', sensitiveLimiter, async (req, res) => {
+  const task = await store.getTask(req.params.id);
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }

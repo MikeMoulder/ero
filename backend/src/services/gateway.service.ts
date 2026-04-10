@@ -45,7 +45,7 @@ class GatewayService {
     }
   }
 
-  registerApi(baseUrl: string, slug: string, price: number, receiverAddress?: string, owner?: string): RegisteredAPI {
+  async registerApi(baseUrl: string, slug: string, price: number, receiverAddress?: string, owner?: string): Promise<RegisteredAPI> {
     const normalizedSlug = slug.toLowerCase().replace(/[^a-z0-9\-]/g, '').replace(/^-+|-+$/g, '');
 
     if (!normalizedSlug) {
@@ -58,17 +58,17 @@ class GatewayService {
 
     this.validateBaseUrl(baseUrl);
 
-    const existing = store.getApiBySlug(normalizedSlug);
+    const existing = await store.getApiBySlug(normalizedSlug);
     if (existing) {
       // Allow claiming unowned catalog entries
       if (!existing.owner && owner) {
-        store.updateApi(existing.id, {
+        await store.updateApi(existing.id, {
           baseUrl: baseUrl.replace(/\/$/, ''),
           price,
           receiverAddress: receiverAddress || stellarService.getAgentPublicKey(),
           owner,
         });
-        const claimed = store.getApiBySlug(normalizedSlug)!;
+        const claimed = (await store.getApiBySlug(normalizedSlug))!;
         events.log('info', 'Gateway', `Claimed catalog API: ${claimed.name} by ${owner} (${price} USDC/call)`, undefined, owner);
         return claimed;
       }
@@ -89,7 +89,7 @@ class GatewayService {
       createdAt: new Date().toISOString(),
     };
 
-    store.addApi(api);
+    await store.addApi(api);
     events.log('info', 'Gateway', `Registered API: ${api.name} at /x402/${normalizedSlug}/* (${price} USDC/call)`, undefined, owner);
     return api;
   }
@@ -135,7 +135,7 @@ class GatewayService {
       return { status: 404, body: { error: 'Invalid path', path: `/x402${wrappedPath}` } };
     }
 
-    const api = store.getApiBySlug(parsed.slug);
+    const api = await store.getApiBySlug(parsed.slug);
     if (!api) {
       return { status: 404, body: { error: 'API not found', slug: parsed.slug, path: `/x402${wrappedPath}` } };
     }
@@ -146,7 +146,7 @@ class GatewayService {
 
     // No payment provided - return 402
     if (!paymentId) {
-      const payment = stellarService.createPaymentRequest(api.id, api.name, api.price, api.receiverAddress, userPublicKey);
+      const payment = await stellarService.createPaymentRequest(api.id, api.name, api.price, api.receiverAddress, userPublicKey);
       events.log('payment', 'Gateway', `402 Payment Required for ${api.name}${parsed.subPath}: ${api.price} USDC`, {
         paymentId: payment.id,
       }, userPublicKey);
@@ -166,7 +166,7 @@ class GatewayService {
     }
 
     // Payment provided - check status
-    const payment = store.getPayment(paymentId);
+    const payment = await store.getPayment(paymentId);
     if (!payment) {
       return { status: 402, body: { error: 'Invalid payment ID' } };
     }
@@ -186,7 +186,7 @@ class GatewayService {
     // Payment verified - forward request with sub-path (one-time use)
     try {
       // Mark payment as consumed to prevent replay
-      store.updatePayment(paymentId, { status: 'consumed' as any });
+      await store.updatePayment(paymentId, { status: 'consumed' as any });
 
       const mergedQuery = { ...parsed.queryParams, ...query };
       const result = await this.forwardRequest(api, parsed.subPath, mergedQuery);
@@ -198,7 +198,7 @@ class GatewayService {
         return { status: result.upstreamStatus, body: { error: 'Upstream API returned an error', upstreamStatus: result.upstreamStatus, upstreamResponse: result.data, paymentId } };
       }
 
-      store.updateApi(api.id, {
+      await store.updateApi(api.id, {
         callCount: api.callCount + 1,
         totalRevenue: api.totalRevenue + api.price,
       });
@@ -206,7 +206,7 @@ class GatewayService {
       return { status: 200, body: result.data };
     } catch (err: any) {
       // Revert payment to verified so the caller can retry without paying again
-      store.updatePayment(paymentId, { status: 'verified' as any });
+      await store.updatePayment(paymentId, { status: 'verified' as any });
       events.log('error', 'Gateway', `Failed to forward to ${api.baseUrl}${parsed.subPath}: ${err.message} (payment ${paymentId} restored for retry)`, undefined, payment.userPublicKey || userPublicKey);
       return { status: 502, body: { error: 'Upstream API error', message: err.message, paymentId, retryable: true } };
     }

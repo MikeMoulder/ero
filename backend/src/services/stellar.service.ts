@@ -11,14 +11,16 @@ class StellarService {
 
   /** Emit a payment_update event scoped to the payment's owner */
   private emitPaymentUpdate(paymentId: string): void {
-    const payment = store.getPayment(paymentId);
-    if (!payment) return;
-    const evt = { type: 'payment_update' as const, payload: payment };
-    if (payment.userPublicKey) {
-      events.sendToUser(payment.userPublicKey, evt);
-    } else {
-      events.broadcast(evt);
-    }
+    void (async () => {
+      const payment = await store.getPayment(paymentId);
+      if (!payment) return;
+      const evt = { type: 'payment_update' as const, payload: payment };
+      if (payment.userPublicKey) {
+        events.sendToUser(payment.userPublicKey, evt);
+      } else {
+        events.broadcast(evt);
+      }
+    })();
   }
   private agentKeypair: StellarSdk.Keypair;
   private networkPassphrase: string;
@@ -210,7 +212,7 @@ class StellarService {
 
   // === Payment Request Creation ===
 
-  createPaymentRequest(apiId: string, apiName: string, amount: number, destinationAddress: string, userPublicKey: string = ''): PaymentRequest {
+  async createPaymentRequest(apiId: string, apiName: string, amount: number, destinationAddress: string, userPublicKey: string = ''): Promise<PaymentRequest> {
     const id = uuid();
     const payment: PaymentRequest = {
       id,
@@ -228,7 +230,7 @@ class StellarService {
       createdAt: new Date().toISOString(),
       verifiedAt: null,
     };
-    store.addPayment(payment);
+    await store.addPayment(payment);
     this.emitPaymentUpdate(payment.id);
     return payment;
   }
@@ -290,9 +292,9 @@ class StellarService {
   }
 
   async submitSignedTransaction(signedTxXdr: string, paymentId: string): Promise<string> {
-    store.updatePayment(paymentId, { status: 'submitted' });
+    await store.updatePayment(paymentId, { status: 'submitted' });
     this.emitPaymentUpdate(paymentId);
-    const userPublicKey = store.getPayment(paymentId)?.userPublicKey;
+    const userPublicKey = (await store.getPayment(paymentId))?.userPublicKey;
 
     try {
       const tx = StellarSdk.TransactionBuilder.fromXDR(
@@ -302,13 +304,13 @@ class StellarService {
       const result = await this.server.submitTransaction(tx);
       const txHash = result.hash;
 
-      store.updatePayment(paymentId, { txHash });
+      await store.updatePayment(paymentId, { txHash });
       events.log('payment', 'Stellar', `Transaction submitted: ${txHash}`, undefined, userPublicKey);
       this.emitPaymentUpdate(paymentId);
 
       return txHash;
     } catch (err: any) {
-      store.updatePayment(paymentId, { status: 'failed' });
+      await store.updatePayment(paymentId, { status: 'failed' });
       this.emitPaymentUpdate(paymentId);
       const detail = err?.response?.data?.extras?.result_codes || err.message;
       console.error('[Stellar] Submission failed:', JSON.stringify(detail));
@@ -327,14 +329,14 @@ class StellarService {
     agentId?: string,
     taskId?: string
   ): Promise<string> {
-    store.updatePayment(paymentId, {
+    await store.updatePayment(paymentId, {
       status: 'submitted',
       callerType: 'agent',
       agentId: agentId || null,
       taskId: taskId || null,
     });
     this.emitPaymentUpdate(paymentId);
-    const userPublicKey = store.getPayment(paymentId)?.userPublicKey;
+    const userPublicKey = (await store.getPayment(paymentId))?.userPublicKey;
 
     try {
       const account = await this.server.loadAccount(keypair.publicKey());
@@ -358,13 +360,13 @@ class StellarService {
       const result = await this.server.submitTransaction(tx);
       const txHash = result.hash;
 
-      store.updatePayment(paymentId, { txHash });
+      await store.updatePayment(paymentId, { txHash });
       events.log('payment', 'Stellar', `Agent transaction submitted: ${txHash}`, { amount, memo }, userPublicKey);
       this.emitPaymentUpdate(paymentId);
 
       return txHash;
     } catch (err: any) {
-      store.updatePayment(paymentId, { status: 'failed' });
+      await store.updatePayment(paymentId, { status: 'failed' });
       this.emitPaymentUpdate(paymentId);
       const detail = err?.response?.data?.extras?.result_codes || err.message;
       console.error('[Stellar] Agent payment failed:', JSON.stringify(detail));
@@ -388,7 +390,7 @@ class StellarService {
   // === Verification ===
 
   async verifyPayment(paymentId: string): Promise<boolean> {
-    const payment = store.getPayment(paymentId);
+    const payment = await store.getPayment(paymentId);
     if (!payment) return false;
     if (payment.status === 'verified') return true;
     if (!payment.txHash) return false;
@@ -418,7 +420,7 @@ class StellarService {
         return false;
       }
 
-      store.updatePayment(paymentId, {
+      await store.updatePayment(paymentId, {
         status: 'verified',
         verifiedAt: new Date().toISOString(),
       });

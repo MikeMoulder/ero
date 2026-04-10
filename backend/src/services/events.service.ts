@@ -106,7 +106,9 @@ class EventsService {
       ...(userPublicKey ? { userPublicKey } : {}),
       data,
     };
-    store.addLog(entry);
+    void store.addLog(entry).catch((err) => {
+      console.error('[Events] Failed to persist log:', err.message);
+    });
 
     // Authenticated clients only receive logs scoped to their own public key.
     if (userPublicKey) {

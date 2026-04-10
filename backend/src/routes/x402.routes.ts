@@ -60,11 +60,12 @@ x402Router.post('/submit-payment', sensitiveLimiter, async (req, res) => {
 
     // Forward request
     const apiResponse = await gatewayService.handleWrappedRequest(wrappedPath, paymentId, req.query as any);
+    const payment = await (await import('../store/memory.store')).store.getPayment(paymentId);
 
     res.json({
       paymentId,
       txHash,
-      amount: (await import('../store/memory.store')).store.getPayment(paymentId)?.amount,
+      amount: payment?.amount,
       apiResponse: apiResponse.body,
     });
   } catch (err: any) {

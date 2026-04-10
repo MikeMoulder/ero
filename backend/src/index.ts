@@ -23,10 +23,6 @@ const app = express();
 // Trust reverse proxy (Render, etc.)
 app.set('trust proxy', 1);
 
-// Initialize SQLite stores
-walletStore.initialize();
-store.initialize();
-
 // Security middleware
 app.use(helmet());
 app.use(cors({ origin: config.frontendUrl }));
@@ -72,16 +68,24 @@ wss.on('connection', (ws, req) => {
   events.log('info', 'WebSocket', 'Client connected', undefined, userPublicKey);
 });
 
-server.listen(config.port, () => {
-  console.log(`[X402 Gateway] Server running on http://localhost:${config.port}`);
-  console.log(`[X402 Gateway] WebSocket on ws://localhost:${config.port}/ws`);
-  events.log('info', 'System', 'X402 Agent Gateway started');
+async function startServer(): Promise<void> {
+  await walletStore.initialize();
+  await store.initialize();
+  await seedApis();
 
-  // Start Soroban contract sync (every 30s)
-  store.startAutoSync();
+  server.listen(config.port, () => {
+    console.log(`[X402 Gateway] Server running on http://localhost:${config.port}`);
+    console.log(`[X402 Gateway] WebSocket on ws://localhost:${config.port}/ws`);
+    events.log('info', 'System', 'X402 Agent Gateway started');
 
-  // Seed free API catalog
-  seedApis();
+    // Start Soroban contract sync (every 30s)
+    store.startAutoSync();
+  });
+}
+
+startServer().catch((err) => {
+  console.error('[X402 Gateway] Startup failed:', err.message);
+  process.exit(1);
 });
 
 // Graceful shutdown

@@ -1,6 +1,6 @@
 import { seedCatalogApis } from '../config/api-catalog';
 import { stellarService } from './stellar.service';
 
-export function seedApis(): void {
-  seedCatalogApis(stellarService.getAgentPublicKey());
+export async function seedApis(): Promise<void> {
+  await seedCatalogApis(stellarService.getAgentPublicKey());
 }

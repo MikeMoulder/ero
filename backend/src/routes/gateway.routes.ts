@@ -14,7 +14,7 @@ const MAX_FAUCET_AMOUNT = 10000;
 // === API Registration (in-memory + Soroban on-chain) ===
 
 // Direct registration (in-memory, used when Soroban is not configured)
-gatewayRouter.post('/register-api', sensitiveLimiter, (req, res) => {
+gatewayRouter.post('/register-api', sensitiveLimiter, async (req, res) => {
   try {
     const { baseUrl, slug, price, receiverAddress, owner } = req.body;
     if (!baseUrl || !slug || !price) {
@@ -23,7 +23,7 @@ gatewayRouter.post('/register-api', sensitiveLimiter, (req, res) => {
     if (typeof price !== 'number' || price <= 0) {
       return res.status(400).json({ error: 'price must be a positive number' });
     }
-    const api = gatewayService.registerApi(baseUrl, slug, price, receiverAddress, owner);
+    const api = await gatewayService.registerApi(baseUrl, slug, price, receiverAddress, owner);
     res.status(201).json(api);
   } catch (err: any) {
     res.status(400).json({ error: safeErrorMessage(err) });
@@ -62,7 +62,7 @@ gatewayRouter.post('/register-api/submit', sensitiveLimiter, async (req, res) =>
     const txHash = await sorobanService.submitTransaction(signedTxXdr);
 
     // Also register locally and sync from contract
-    const api = gatewayService.registerApi(
+    const api = await gatewayService.registerApi(
       baseUrl, slug, price, receiverAddress, owner
     );
 
@@ -83,7 +83,7 @@ gatewayRouter.post('/apis/:id/remove/prepare', async (req, res) => {
       return res.status(400).json({ error: 'callerPublicKey is required' });
     }
 
-    const api = store.getApi(req.params.id);
+    const api = await store.getApi(req.params.id);
     if (!api) {
       return res.status(404).json({ error: 'API not found' });
     }
@@ -111,7 +111,7 @@ gatewayRouter.post('/apis/:id/remove/submit', async (req, res) => {
     await sorobanService.submitTransaction(signedTxXdr);
 
     // Remove locally
-    store.removeApi(req.params.id);
+    await store.removeApi(req.params.id);
     await store.syncFromContract();
 
     res.json({ success: true });
@@ -120,17 +120,17 @@ gatewayRouter.post('/apis/:id/remove/submit', async (req, res) => {
   }
 });
 
-gatewayRouter.get('/apis', (req, res) => {
+gatewayRouter.get('/apis', async (req, res) => {
   const owner = req.query.owner as string | undefined;
-  let apis = store.getAllApis();
+  let apis = await store.getAllApis();
   if (owner) {
     apis = apis.filter(a => a.owner === owner);
   }
   res.json(apis);
 });
 
-gatewayRouter.delete('/apis/:id', (req, res) => {
-  const api = store.getApi(req.params.id);
+gatewayRouter.delete('/apis/:id', async (req, res) => {
+  const api = await store.getApi(req.params.id);
   if (!api) {
     return res.status(404).json({ error: 'API not found' });
   }
@@ -141,7 +141,7 @@ gatewayRouter.delete('/apis/:id', (req, res) => {
     return res.status(403).json({ error: 'You do not own this API' });
   }
 
-  store.removeApi(req.params.id);
+  await store.removeApi(req.params.id);
   res.json({ success: true });
 });
 

@@ -20,7 +20,7 @@ class AgentService {
   private isExecuting = false;
   private approvedUsers: Set<string> = new Set();
 
-  createTask(prompt: string, userPublicKey: string): Task {
+  async createTask(prompt: string, userPublicKey: string): Promise<Task> {
     const task: Task = {
       id: uuid(),
       prompt,
@@ -33,24 +33,24 @@ class AgentService {
       createdAt: new Date().toISOString(),
       completedAt: null,
     };
-    store.addTask(task);
+    await store.addTask(task);
     events.log('info', 'Orchestrator', `Task created: "${prompt}"`, undefined, task.userPublicKey);
     events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     return task;
   }
 
   async decomposeOnly(taskId: string): Promise<void> {
-    const task = store.getTask(taskId);
+    const task = await store.getTask(taskId);
     if (!task) throw new Error('Task not found');
 
     try {
       // Phase 1: Decompose
       task.status = 'decomposing';
-      store.updateTask(taskId, { status: 'decomposing' });
+      await store.updateTask(taskId, { status: 'decomposing' });
       events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
       events.log('agent', 'Orchestrator', 'Decomposing task into steps...', undefined, task.userPublicKey);
 
-      const apis = store.getAllApis();
+      const apis = await store.getAllApis();
       const stepDescriptors = await decomposeTask(task.prompt, apis);
 
       // Fetch real agent wallet balance before creating agents
@@ -97,7 +97,7 @@ class AgentService {
 
       const totalEstimatedCost = task.steps.reduce((sum, s) => sum + s.estimatedCost, 0);
 
-      store.updateTask(taskId, { agents: task.agents, steps: task.steps });
+      await store.updateTask(taskId, { agents: task.agents, steps: task.steps });
 
       events.log('agent', 'Orchestrator', `Task decomposed into ${task.steps.length} steps with ${task.agents.length} agents. Estimated cost: ${totalEstimatedCost.toFixed(4)} USDC`, undefined, task.userPublicKey);
 
@@ -105,7 +105,7 @@ class AgentService {
       if (this.approvedUsers.has(task.userPublicKey)) {
         events.log('info', 'Orchestrator', 'Auto-approved (Approve Always is active)', undefined, task.userPublicKey);
         task.status = 'executing';
-        store.updateTask(taskId, { status: 'executing' });
+        await store.updateTask(taskId, { status: 'executing' });
         events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
         // Fire-and-forget execution
         this.runExecution(taskId).catch(err => {
@@ -116,7 +116,7 @@ class AgentService {
 
       // Wait for user approval
       task.status = 'awaiting_approval';
-      store.updateTask(taskId, { status: 'awaiting_approval' });
+      await store.updateTask(taskId, { status: 'awaiting_approval' });
       events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
 
       events.sendToUser(task.userPublicKey, {
@@ -130,20 +130,20 @@ class AgentService {
       });
     } catch (err: any) {
       task.status = 'failed';
-      store.updateTask(taskId, { status: 'failed' });
+      await store.updateTask(taskId, { status: 'failed' });
       events.log('error', 'Orchestrator', `Decomposition failed: ${err.message}`, undefined, task.userPublicKey);
       events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     }
   }
 
   async approveTask(taskId: string, decision: 'approve' | 'deny' | 'approve_always'): Promise<void> {
-    const task = store.getTask(taskId);
+    const task = await store.getTask(taskId);
     if (!task) throw new Error('Task not found');
     if (task.status !== 'awaiting_approval') throw new Error('Task is not awaiting approval');
 
     if (decision === 'deny') {
       task.status = 'failed';
-      store.updateTask(taskId, { status: 'failed' });
+      await store.updateTask(taskId, { status: 'failed' });
       events.log('info', 'Orchestrator', 'Task denied by user', undefined, task.userPublicKey);
       events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
       return;
@@ -156,7 +156,7 @@ class AgentService {
 
     events.log('info', 'Orchestrator', 'Task approved — starting execution', undefined, task.userPublicKey);
     task.status = 'executing';
-    store.updateTask(taskId, { status: 'executing' });
+    await store.updateTask(taskId, { status: 'executing' });
     events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     await this.runExecution(taskId);
   }
@@ -172,7 +172,7 @@ class AgentService {
       throw new Error('Another task is already executing');
     }
 
-    const task = store.getTask(taskId);
+    const task = await store.getTask(taskId);
     if (!task) throw new Error('Task not found');
 
     this.isExecuting = true;
@@ -187,7 +187,7 @@ class AgentService {
 
         const agent = task.agents.find(a => a.id === step.agentId)!;
         agent.status = 'working';
-        store.updateTask(taskId, { steps: task.steps, agents: task.agents });
+        await store.updateTask(taskId, { steps: task.steps, agents: task.agents });
         events.log('agent', agent.name, `Starting: ${step.description}`, undefined, task.userPublicKey);
 
         let apiData: any = null;
@@ -201,7 +201,7 @@ class AgentService {
             step.completedAt = new Date().toISOString();
             agent.status = 'failed';
             task.status = 'failed';
-            store.updateTask(taskId, { status: 'failed', steps: task.steps, agents: task.agents });
+            await store.updateTask(taskId, { status: 'failed', steps: task.steps, agents: task.agents });
             events.log('error', agent.name, `Step failed: ${err.message}`, undefined, task.userPublicKey);
             events.sendToUser(task.userPublicKey, { type: 'step_update', payload: { taskId, step, agents: task.agents } });
             events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
@@ -223,7 +223,7 @@ class AgentService {
 
         previousOutput = output;
 
-        store.updateTask(taskId, { steps: task.steps, agents: task.agents });
+        await store.updateTask(taskId, { steps: task.steps, agents: task.agents });
         events.log('agent', agent.name, `Completed: ${step.description}`, undefined, task.userPublicKey);
         events.sendToUser(task.userPublicKey, { type: 'step_update', payload: { taskId, step, agents: task.agents } });
       }
@@ -232,12 +232,12 @@ class AgentService {
       task.status = 'completed';
       task.result = previousOutput;
       task.completedAt = new Date().toISOString();
-      store.updateTask(taskId, { status: 'completed', result: task.result, completedAt: task.completedAt, totalSpent: task.totalSpent });
+      await store.updateTask(taskId, { status: 'completed', result: task.result, completedAt: task.completedAt, totalSpent: task.totalSpent });
       events.log('info', 'Orchestrator', `Task completed. Total spent: ${task.totalSpent.toFixed(4)} USDC`, undefined, task.userPublicKey);
       events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     } catch (err: any) {
       task.status = 'failed';
-      store.updateTask(taskId, { status: 'failed' });
+      await store.updateTask(taskId, { status: 'failed' });
       events.log('error', 'Orchestrator', `Task failed: ${err.message}`, undefined, task.userPublicKey);
       events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     } finally {
@@ -249,8 +249,8 @@ class AgentService {
    * Try to fix a bad endpoint by matching the path against known API slugs.
    * e.g. "/timezone/America/New_York" → "/worldtime/timezone/America/New_York"
    */
-  private tryFixEndpoint(endpoint: string): string | null {
-    const allApis = store.getAllApis();
+  private async tryFixEndpoint(endpoint: string): Promise<string | null> {
+    const allApis = await store.getAllApis();
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
     for (const api of allApis) {
@@ -343,7 +343,7 @@ class AgentService {
         query = patched.queryParams || {};
         step.apiEndpoint = endpoint;
         step.queryParams = query;
-        store.updateTask(task.id, { steps: task.steps });
+        await store.updateTask(task.id, { steps: task.steps });
         events.log('info', agent.name, `Patched endpoint: /x402${endpoint}`, undefined, task.userPublicKey);
       } catch (err: any) {
         events.log('warn', agent.name, `LLM patch failed: ${err.message} — proceeding with unresolved templates`, undefined, task.userPublicKey);
@@ -357,12 +357,12 @@ class AgentService {
 
     // If 404, the LLM may have omitted the slug — try to fix
     if (firstResponse.status === 404) {
-      const fixed = this.tryFixEndpoint(endpoint);
+      const fixed = await this.tryFixEndpoint(endpoint);
       if (fixed && fixed !== endpoint) {
         events.log('info', agent.name, `Slug correction: ${endpoint} → ${fixed}`, undefined, task.userPublicKey);
         endpoint = fixed;
         step.apiEndpoint = fixed;
-        store.updateTask(task.id, { steps: task.steps });
+        await store.updateTask(task.id, { steps: task.steps });
         firstResponse = await gatewayService.handleWrappedRequest(endpoint, undefined, query, task.userPublicKey);
       }
     }
@@ -385,12 +385,12 @@ class AgentService {
     // Send payment
     events.log('payment', agent.name, `Sending payment of ${paymentInfo.amount} USDC...`, undefined, task.userPublicKey);
     step.paymentId = paymentInfo.paymentId;
-    store.updateTask(task.id, { steps: task.steps });
+    await store.updateTask(task.id, { steps: task.steps });
 
     // Use per-user agent wallet if available, fall back to shared server wallet
     let txHash: string;
     try {
-      const keypair = agentWalletService.getKeypair(task.userPublicKey);
+      const keypair = await agentWalletService.getKeypair(task.userPublicKey);
       txHash = await stellarService.sendPaymentFromKeypair(
         keypair,
         paymentInfo.address,
@@ -425,7 +425,7 @@ class AgentService {
     agent.walletBalance -= paymentInfo.amount;
     agent.totalSpent += paymentInfo.amount;
     task.totalSpent += paymentInfo.amount;
-    store.updateTask(task.id, { agents: task.agents, totalSpent: task.totalSpent });
+    await store.updateTask(task.id, { agents: task.agents, totalSpent: task.totalSpent });
 
     const apiResponse = await gatewayService.handleWrappedRequest(endpoint, paymentInfo.paymentId, query, task.userPublicKey);
     if (apiResponse.status === 200) {

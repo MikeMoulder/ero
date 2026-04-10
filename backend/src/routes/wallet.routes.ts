@@ -60,7 +60,7 @@ walletRouter.post('/withdraw', sensitiveLimiter, async (req, res) => {
     }
 
     // Verify the wallet exists for this user (ownership boundary)
-    const wallet = walletStore.getWallet(userPublicKey);
+    const wallet = await walletStore.getWallet(userPublicKey);
     if (!wallet) {
       return res.status(404).json({ error: 'Agent wallet not found' });
     }

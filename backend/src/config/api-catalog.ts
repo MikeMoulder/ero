@@ -1651,14 +1651,14 @@ export function getCatalogEntry(slug: string): CatalogEntry | undefined {
   return catalogBySlug.get(slug);
 }
 
-export function seedCatalogApis(receiverAddress: string): void {
+export async function seedCatalogApis(receiverAddress: string): Promise<void> {
   let seeded = 0;
   for (const entry of API_CATALOG) {
-    const existing = store.getApiBySlug(entry.slug);
+    const existing = await store.getApiBySlug(entry.slug);
     if (existing) continue;
 
     try {
-      gatewayService.registerApi(
+      await gatewayService.registerApi(
         entry.baseUrl,
         entry.slug,
         entry.price,

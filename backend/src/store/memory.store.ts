@@ -1,15 +1,11 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { type Client, type InValue } from '@libsql/client';
 import { RegisteredAPI, PaymentRequest, Task, LogEntry } from '../types';
 import { sorobanService } from '../services/soroban.service';
-import { config } from '../config';
+import { getDbClient } from './db';
 
 const MAX_LOGS = 2000;
 const PAYMENT_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_CONSECUTIVE_SYNC_FAILURES = 10;
-
-// === Row ↔ Object mappers ===
 
 interface ApiRow {
   id: string; name: string; base_url: string; slug: string; price: number;
@@ -37,18 +33,27 @@ interface LogRow {
   message: string; user_public_key: string; data: string | null;
 }
 
+function safeParse<T>(json: string, fallback: T): T {
+  try { return JSON.parse(json); } catch { return fallback; }
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function rowToApi(r: ApiRow): RegisteredAPI {
   return {
     id: r.id, name: r.name, baseUrl: r.base_url, slug: r.slug,
-    price: r.price, receiverAddress: r.receiver_address, owner: r.owner,
+    price: toNumber(r.price), receiverAddress: r.receiver_address, owner: r.owner,
     status: r.status as RegisteredAPI['status'],
-    callCount: r.call_count, totalRevenue: r.total_revenue, createdAt: r.created_at,
+    callCount: toNumber(r.call_count), totalRevenue: toNumber(r.total_revenue), createdAt: r.created_at,
   };
 }
 
 function rowToPayment(r: PaymentRow): PaymentRequest {
   return {
-    id: r.id, apiId: r.api_id, apiName: r.api_name, amount: r.amount,
+    id: r.id, apiId: r.api_id, apiName: r.api_name, amount: toNumber(r.amount),
     destinationAddress: r.destination_address, memo: r.memo,
     status: r.status as PaymentRequest['status'],
     txHash: r.tx_hash, callerType: r.caller_type as PaymentRequest['callerType'],
@@ -64,7 +69,7 @@ function rowToTask(r: TaskRow): Task {
     status: r.status as Task['status'],
     steps: safeParse(r.steps, []),
     agents: safeParse(r.agents, []),
-    totalSpent: r.total_spent,
+    totalSpent: toNumber(r.total_spent),
     result: r.result != null ? safeParse(r.result, null) : null,
     createdAt: r.created_at, completedAt: r.completed_at,
   };
@@ -79,11 +84,6 @@ function rowToLog(r: LogRow): LogEntry {
   };
 }
 
-function safeParse<T>(json: string, fallback: T): T {
-  try { return JSON.parse(json); } catch { return fallback; }
-}
-
-// camelCase → snake_case field mappings for dynamic UPDATE builders
 const API_FIELD_MAP: Record<string, string> = {
   id: 'id', name: 'name', baseUrl: 'base_url', slug: 'slug', price: 'price',
   receiverAddress: 'receiver_address', owner: 'owner', status: 'status',
@@ -104,10 +104,8 @@ const TASK_FIELD_MAP: Record<string, string> = {
   result: 'result', createdAt: 'created_at', completedAt: 'completed_at',
 };
 
-// JSON-serialized fields
 const TASK_JSON_FIELDS = new Set(['steps', 'agents', 'result']);
 
-// Strip prototype-polluting keys from update objects
 function sanitize<T>(updates: Partial<T>): Partial<T> {
   const obj = updates as any;
   delete obj.__proto__;
@@ -122,9 +120,10 @@ function buildUpdate(
   id: string,
   updates: Record<string, any>,
   jsonFields?: Set<string>,
-): { sql: string; params: any[] } | null {
+): { sql: string; params: InValue[] } | null {
   const cols: string[] = [];
-  const params: any[] = [];
+  const params: InValue[] = [];
+
   for (const [camel, val] of Object.entries(updates)) {
     const col = fieldMap[camel];
     if (!col || col === 'id') continue;
@@ -135,30 +134,22 @@ function buildUpdate(
       params.push(val ?? null);
     }
   }
+
   if (cols.length === 0) return null;
   params.push(id);
   return { sql: `UPDATE ${table} SET ${cols.join(', ')} WHERE id = ?`, params };
 }
 
 class Store {
-  private db!: Database.Database;
+  private db!: Client;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private expiryInterval: ReturnType<typeof setInterval> | null = null;
   private consecutiveSyncFailures = 0;
 
-  // === Lifecycle ===
+  async initialize(): Promise<void> {
+    this.db = getDbClient();
 
-  initialize(): void {
-    const dbPath = config.wallet.dbPath || path.resolve(__dirname, '../../../data/wallets.db');
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-
-    this.db.exec(`
+    await this.db.executeMultiple(`
       CREATE TABLE IF NOT EXISTS apis (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -214,46 +205,30 @@ class Store {
         data TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
-    `);
-
-    console.log('[Store] SQLite initialized');
-
-    // Migration: add user_public_key to payments if missing (existing DBs)
-    try {
-      this.db.exec(`ALTER TABLE payments ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
-      console.log('[Store] Migrated payments table: added user_public_key');
-    } catch {
-      // Column already exists
-    }
-
-    // Migration: add user_public_key to logs if missing
-    try {
-      this.db.exec(`ALTER TABLE logs ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
-      console.log('[Store] Migrated logs table: added user_public_key');
-    } catch {
-      // Column already exists
-    }
-
-    // Add user-scoped indexes
-    this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_public_key);
       CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_public_key);
     `);
+
+    try {
+      await this.db.execute(`ALTER TABLE payments ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
+      console.log('[Store] Migrated payments table: added user_public_key');
+    } catch {
+      // Column already exists.
+    }
+
+    try {
+      await this.db.execute(`ALTER TABLE logs ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
+      console.log('[Store] Migrated logs table: added user_public_key');
+    } catch {
+      // Column already exists.
+    }
+
+    console.log('[Store] Database initialized');
   }
 
   close(): void {
-    if (this.db) {
-      try {
-        this.db.pragma('wal_checkpoint(TRUNCATE)');
-        this.db.close();
-        console.log('[Store] SQLite closed cleanly');
-      } catch (err: any) {
-        console.error('[Store] Error closing database:', err.message);
-      }
-    }
+    console.log('[Store] Database close requested');
   }
-
-  // === Soroban sync (unchanged logic, now backed by SQLite) ===
 
   async syncFromContract(): Promise<void> {
     if (!sorobanService.isConfigured()) return;
@@ -262,36 +237,36 @@ class Store {
       const onChainApis = await sorobanService.getAllApis();
 
       for (const onChain of onChainApis) {
-        const existing = this.getApi(onChain.id) || this.getApiBySlug(onChain.slug);
+        const existing = (await this.getApi(onChain.id)) || (await this.getApiBySlug(onChain.slug));
         if (existing) {
-          // Preserve local stats
           onChain.callCount = existing.callCount;
           onChain.totalRevenue = existing.totalRevenue;
-          // Remove old entry if ID changed (matched by slug)
           if (existing.id !== onChain.id) {
-            this.removeApi(existing.id);
+            await this.removeApi(existing.id);
           }
         }
-        // Upsert
-        this.db.prepare(`
-          INSERT OR REPLACE INTO apis (id, name, base_url, slug, price, receiver_address, owner, status, call_count, total_revenue, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          onChain.id, onChain.name, onChain.baseUrl, onChain.slug, onChain.price,
-          onChain.receiverAddress, onChain.owner, onChain.status,
-          onChain.callCount, onChain.totalRevenue, onChain.createdAt,
-        );
+
+        await this.db.execute({
+          sql: `
+            INSERT OR REPLACE INTO apis (id, name, base_url, slug, price, receiver_address, owner, status, call_count, total_revenue, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          args: [
+            onChain.id, onChain.name, onChain.baseUrl, onChain.slug, onChain.price,
+            onChain.receiverAddress, onChain.owner, onChain.status,
+            onChain.callCount, onChain.totalRevenue, onChain.createdAt,
+          ],
+        });
       }
 
-      // Remove on-chain-originated APIs that no longer exist
       if (onChainApis.length > 0) {
-        const onChainIds = new Set(onChainApis.map(a => a.id));
-        const ownedApis = this.db.prepare(
-          `SELECT id FROM apis WHERE owner != ''`
-        ).all() as { id: string }[];
+        const onChainIds = new Set(onChainApis.map((a) => a.id));
+        const ownedApisResult = await this.db.execute(`SELECT id FROM apis WHERE owner != ''`);
+        const ownedApis = ownedApisResult.rows as unknown as Array<{ id: string }>;
+
         for (const { id } of ownedApis) {
           if (!onChainIds.has(id)) {
-            this.removeApi(id);
+            await this.removeApi(id);
           }
         }
       }
@@ -312,11 +287,15 @@ class Store {
 
   startAutoSync(intervalMs = 30000): void {
     if (this.syncInterval) return;
-    this.syncFromContract();
-    this.syncInterval = setInterval(() => this.syncFromContract(), intervalMs);
+    void this.syncFromContract();
+    this.syncInterval = setInterval(() => {
+      void this.syncFromContract();
+    }, intervalMs);
 
     if (!this.expiryInterval) {
-      this.expiryInterval = setInterval(() => this.expirePendingPayments(), 60000);
+      this.expiryInterval = setInterval(() => {
+        void this.expirePendingPayments();
+      }, 60000);
     }
   }
 
@@ -331,172 +310,190 @@ class Store {
     }
   }
 
-  // === APIs ===
-
-  addApi(api: RegisteredAPI): void {
-    this.db.prepare(`
-      INSERT OR REPLACE INTO apis (id, name, base_url, slug, price, receiver_address, owner, status, call_count, total_revenue, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      api.id, api.name, api.baseUrl, api.slug, api.price,
-      api.receiverAddress, api.owner, api.status,
-      api.callCount, api.totalRevenue, api.createdAt,
-    );
+  async addApi(api: RegisteredAPI): Promise<void> {
+    await this.db.execute({
+      sql: `
+        INSERT OR REPLACE INTO apis (id, name, base_url, slug, price, receiver_address, owner, status, call_count, total_revenue, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        api.id, api.name, api.baseUrl, api.slug, api.price,
+        api.receiverAddress, api.owner, api.status,
+        api.callCount, api.totalRevenue, api.createdAt,
+      ],
+    });
   }
 
-  getApi(id: string): RegisteredAPI | undefined {
-    const row = this.db.prepare('SELECT * FROM apis WHERE id = ?').get(id) as ApiRow | undefined;
+  async getApi(id: string): Promise<RegisteredAPI | undefined> {
+    const rs = await this.db.execute({ sql: 'SELECT * FROM apis WHERE id = ?', args: [id] });
+    const row = rs.rows[0] as unknown as ApiRow | undefined;
     return row ? rowToApi(row) : undefined;
   }
 
-  getApiBySlug(slug: string): RegisteredAPI | undefined {
-    const row = this.db.prepare('SELECT * FROM apis WHERE slug = ?').get(slug) as ApiRow | undefined;
+  async getApiBySlug(slug: string): Promise<RegisteredAPI | undefined> {
+    const rs = await this.db.execute({ sql: 'SELECT * FROM apis WHERE slug = ?', args: [slug] });
+    const row = rs.rows[0] as unknown as ApiRow | undefined;
     return row ? rowToApi(row) : undefined;
   }
 
-  getAllApis(): RegisteredAPI[] {
-    const rows = this.db.prepare('SELECT * FROM apis').all() as ApiRow[];
-    return rows.map(rowToApi);
+  async getAllApis(): Promise<RegisteredAPI[]> {
+    const rs = await this.db.execute('SELECT * FROM apis');
+    return (rs.rows as unknown as ApiRow[]).map(rowToApi);
   }
 
-  getApisByOwner(owner: string): RegisteredAPI[] {
-    const rows = this.db.prepare('SELECT * FROM apis WHERE owner = ?').all(owner) as ApiRow[];
-    return rows.map(rowToApi);
+  async getApisByOwner(owner: string): Promise<RegisteredAPI[]> {
+    const rs = await this.db.execute({ sql: 'SELECT * FROM apis WHERE owner = ?', args: [owner] });
+    return (rs.rows as unknown as ApiRow[]).map(rowToApi);
   }
 
-  removeApi(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM apis WHERE id = ?').run(id);
-    return result.changes > 0;
+  async removeApi(id: string): Promise<boolean> {
+    const rs = await this.db.execute({ sql: 'DELETE FROM apis WHERE id = ?', args: [id] });
+    return (rs.rowsAffected || 0) > 0;
   }
 
-  updateApi(id: string, updates: Partial<RegisteredAPI>): boolean {
+  async updateApi(id: string, updates: Partial<RegisteredAPI>): Promise<boolean> {
     const clean = sanitize(updates);
     const upd = buildUpdate('apis', API_FIELD_MAP, id, clean as Record<string, any>);
     if (!upd) return false;
-    const result = this.db.prepare(upd.sql).run(...upd.params);
-    return result.changes > 0;
+    const rs = await this.db.execute({ sql: upd.sql, args: upd.params });
+    return (rs.rowsAffected || 0) > 0;
   }
 
-  // === Payments ===
-
-  addPayment(payment: PaymentRequest): void {
-    this.db.prepare(`
-      INSERT INTO payments (id, api_id, api_name, amount, destination_address, memo, status, tx_hash, caller_type, agent_id, task_id, user_public_key, created_at, verified_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      payment.id, payment.apiId, payment.apiName, payment.amount,
-      payment.destinationAddress, payment.memo, payment.status,
-      payment.txHash, payment.callerType, payment.agentId, payment.taskId,
-      payment.userPublicKey,
-      payment.createdAt, payment.verifiedAt,
-    );
+  async addPayment(payment: PaymentRequest): Promise<void> {
+    await this.db.execute({
+      sql: `
+        INSERT INTO payments (id, api_id, api_name, amount, destination_address, memo, status, tx_hash, caller_type, agent_id, task_id, user_public_key, created_at, verified_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        payment.id, payment.apiId, payment.apiName, payment.amount,
+        payment.destinationAddress, payment.memo, payment.status,
+        payment.txHash, payment.callerType, payment.agentId, payment.taskId,
+        payment.userPublicKey,
+        payment.createdAt, payment.verifiedAt,
+      ],
+    });
   }
 
-  getPayment(id: string): PaymentRequest | undefined {
-    const row = this.db.prepare('SELECT * FROM payments WHERE id = ?').get(id) as PaymentRow | undefined;
+  async getPayment(id: string): Promise<PaymentRequest | undefined> {
+    const rs = await this.db.execute({ sql: 'SELECT * FROM payments WHERE id = ?', args: [id] });
+    const row = rs.rows[0] as unknown as PaymentRow | undefined;
     return row ? rowToPayment(row) : undefined;
   }
 
-  getAllPayments(): PaymentRequest[] {
-    const rows = this.db.prepare('SELECT * FROM payments ORDER BY created_at DESC').all() as PaymentRow[];
-    return rows.map(rowToPayment);
+  async getAllPayments(): Promise<PaymentRequest[]> {
+    const rs = await this.db.execute('SELECT * FROM payments ORDER BY created_at DESC');
+    return (rs.rows as unknown as PaymentRow[]).map(rowToPayment);
   }
 
-  getPaymentsByUser(userPublicKey: string): PaymentRequest[] {
-    const rows = this.db.prepare('SELECT * FROM payments WHERE user_public_key = ? ORDER BY created_at DESC').all(userPublicKey) as PaymentRow[];
-    return rows.map(rowToPayment);
+  async getPaymentsByUser(userPublicKey: string): Promise<PaymentRequest[]> {
+    const rs = await this.db.execute({
+      sql: 'SELECT * FROM payments WHERE user_public_key = ? ORDER BY created_at DESC',
+      args: [userPublicKey],
+    });
+    return (rs.rows as unknown as PaymentRow[]).map(rowToPayment);
   }
 
-  updatePayment(id: string, updates: Partial<PaymentRequest>): boolean {
+  async updatePayment(id: string, updates: Partial<PaymentRequest>): Promise<boolean> {
     const clean = sanitize(updates);
     const upd = buildUpdate('payments', PAYMENT_FIELD_MAP, id, clean as Record<string, any>);
     if (!upd) return false;
-    const result = this.db.prepare(upd.sql).run(...upd.params);
-    return result.changes > 0;
+    const rs = await this.db.execute({ sql: upd.sql, args: upd.params });
+    return (rs.rowsAffected || 0) > 0;
   }
 
-  // === Tasks ===
-
-  addTask(task: Task): void {
-    this.db.prepare(`
-      INSERT INTO tasks (id, prompt, user_public_key, status, steps, agents, total_spent, result, created_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      task.id, task.prompt, task.userPublicKey, task.status,
-      JSON.stringify(task.steps), JSON.stringify(task.agents),
-      task.totalSpent, task.result != null ? JSON.stringify(task.result) : null,
-      task.createdAt, task.completedAt,
-    );
+  async addTask(task: Task): Promise<void> {
+    await this.db.execute({
+      sql: `
+        INSERT INTO tasks (id, prompt, user_public_key, status, steps, agents, total_spent, result, created_at, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        task.id, task.prompt, task.userPublicKey, task.status,
+        JSON.stringify(task.steps), JSON.stringify(task.agents),
+        task.totalSpent, task.result != null ? JSON.stringify(task.result) : null,
+        task.createdAt, task.completedAt,
+      ],
+    });
   }
 
-  getTask(id: string): Task | undefined {
-    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as TaskRow | undefined;
+  async getTask(id: string): Promise<Task | undefined> {
+    const rs = await this.db.execute({ sql: 'SELECT * FROM tasks WHERE id = ?', args: [id] });
+    const row = rs.rows[0] as unknown as TaskRow | undefined;
     return row ? rowToTask(row) : undefined;
   }
 
-  getAllTasks(): Task[] {
-    const rows = this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all() as TaskRow[];
-    return rows.map(rowToTask);
+  async getAllTasks(): Promise<Task[]> {
+    const rs = await this.db.execute('SELECT * FROM tasks ORDER BY created_at DESC');
+    return (rs.rows as unknown as TaskRow[]).map(rowToTask);
   }
 
-  getTasksByUser(userPublicKey: string): Task[] {
-    const rows = this.db.prepare('SELECT * FROM tasks WHERE user_public_key = ? ORDER BY created_at DESC').all(userPublicKey) as TaskRow[];
-    return rows.map(rowToTask);
+  async getTasksByUser(userPublicKey: string): Promise<Task[]> {
+    const rs = await this.db.execute({
+      sql: 'SELECT * FROM tasks WHERE user_public_key = ? ORDER BY created_at DESC',
+      args: [userPublicKey],
+    });
+    return (rs.rows as unknown as TaskRow[]).map(rowToTask);
   }
 
-  updateTask(id: string, updates: Partial<Task>): boolean {
+  async updateTask(id: string, updates: Partial<Task>): Promise<boolean> {
     const clean = sanitize(updates);
     const upd = buildUpdate('tasks', TASK_FIELD_MAP, id, clean as Record<string, any>, TASK_JSON_FIELDS);
     if (!upd) return false;
-    const result = this.db.prepare(upd.sql).run(...upd.params);
-    return result.changes > 0;
+    const rs = await this.db.execute({ sql: upd.sql, args: upd.params });
+    return (rs.rowsAffected || 0) > 0;
   }
 
-  // === Logs ===
+  async addLog(entry: LogEntry): Promise<void> {
+    await this.db.execute({
+      sql: `
+        INSERT INTO logs (timestamp, level, source, message, user_public_key, data)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        entry.timestamp, entry.level, entry.source, entry.message,
+        entry.userPublicKey || '',
+        entry.data != null ? JSON.stringify(entry.data) : null,
+      ],
+    });
 
-  addLog(entry: LogEntry): void {
-    this.db.prepare(`
-      INSERT INTO logs (timestamp, level, source, message, user_public_key, data)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      entry.timestamp, entry.level, entry.source, entry.message,
-      entry.userPublicKey || '',
-      entry.data != null ? JSON.stringify(entry.data) : null,
-    );
-
-    // Prune old logs
-    const count = (this.db.prepare('SELECT COUNT(*) as cnt FROM logs').get() as { cnt: number }).cnt;
+    const countResult = await this.db.execute('SELECT COUNT(*) as cnt FROM logs');
+    const count = toNumber((countResult.rows[0] as any)?.cnt);
     if (count > MAX_LOGS) {
-      this.db.prepare(`
-        DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT ?)
-      `).run(MAX_LOGS);
+      await this.db.execute({
+        sql: 'DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT ?)',
+        args: [MAX_LOGS],
+      });
     }
   }
 
-  getRecentLogs(count: number = 50): LogEntry[] {
-    const rows = this.db.prepare(
-      'SELECT * FROM logs ORDER BY id DESC LIMIT ?'
-    ).all(count) as LogRow[];
-    return rows.map(rowToLog).reverse();
+  async getRecentLogs(count: number = 50): Promise<LogEntry[]> {
+    const rs = await this.db.execute({
+      sql: 'SELECT * FROM logs ORDER BY id DESC LIMIT ?',
+      args: [count],
+    });
+    return (rs.rows as unknown as LogRow[]).map(rowToLog).reverse();
   }
 
-  getRecentLogsByUser(userPublicKey: string, count: number = 50): LogEntry[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM logs
-       WHERE user_public_key = ?
-       ORDER BY id DESC
-       LIMIT ?`
-    ).all(userPublicKey, count) as LogRow[];
-    return rows.map(rowToLog).reverse();
+  async getRecentLogsByUser(userPublicKey: string, count: number = 50): Promise<LogEntry[]> {
+    const rs = await this.db.execute({
+      sql: `
+        SELECT * FROM logs
+        WHERE user_public_key = ?
+        ORDER BY id DESC
+        LIMIT ?
+      `,
+      args: [userPublicKey, count],
+    });
+    return (rs.rows as unknown as LogRow[]).map(rowToLog).reverse();
   }
 
-  // === Helpers ===
-
-  private expirePendingPayments(): void {
+  private async expirePendingPayments(): Promise<void> {
     const cutoff = new Date(Date.now() - PAYMENT_EXPIRY_MS).toISOString();
-    this.db.prepare(
-      `UPDATE payments SET status = 'expired' WHERE status = 'pending' AND created_at < ?`
-    ).run(cutoff);
+    await this.db.execute({
+      sql: "UPDATE payments SET status = 'expired' WHERE status = 'pending' AND created_at < ?",
+      args: [cutoff],
+    });
   }
 }
 

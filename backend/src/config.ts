@@ -25,6 +25,11 @@ export const config = {
     baseUrl: 'https://openrouter.ai/api/v1',
   },
 
+  turso: {
+    url: process.env.TURSO_DATABASE_URL || '',
+    authToken: process.env.TURSO_AUTH_TOKEN || '',
+  },
+
   agent: {
     defaultBalance: parseFloat(process.env.DEFAULT_AGENT_BALANCE || '100'),
     defaultMaxSpend: parseFloat(process.env.DEFAULT_MAX_SPEND_PER_TASK || '10'),
