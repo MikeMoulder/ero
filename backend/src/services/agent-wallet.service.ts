@@ -28,13 +28,14 @@ class AgentWalletService {
     const existing = await walletStore.getWallet(userPublicKey);
 
     if (existing) {
-      // Verify we can still decrypt the secret — if not, delete and recreate (non-recursive)
+      // Verify decryptability before returning an existing wallet.
       try {
         decrypt(existing.agent_secret_key_enc);
-      } catch {
-        console.warn(`[AgentWallet] Stale wallet for ${userPublicKey.slice(0, 8)}..., recreating`);
-        await walletStore.deleteWallet(userPublicKey);
-        return this._createNewWallet(userPublicKey);
+      } catch (err: any) {
+        console.error(`[AgentWallet] Failed to decrypt wallet for ${userPublicKey.slice(0, 8)}...`);
+        throw new Error(
+          'Stored agent wallet cannot be decrypted. WALLET_ENCRYPTION_KEY is likely missing or changed. Restore the original key to recover this wallet.'
+        );
       }
       return this.enrichWallet(existing);
     }

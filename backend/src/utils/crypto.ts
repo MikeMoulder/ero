@@ -28,6 +28,14 @@ function getMasterKey(): Buffer {
     return masterKey;
   }
 
+  // Remote DB deployments must use a fixed encryption key.
+  if (config.turso.url) {
+    throw new Error(
+      'WALLET_ENCRYPTION_KEY is required when TURSO_DATABASE_URL is set. '
+      + 'Generate a 64-char hex key and set it in environment variables.'
+    );
+  }
+
   // 2. Load from persisted key file
   const keyFile = getKeyFilePath();
   if (fs.existsSync(keyFile)) {
