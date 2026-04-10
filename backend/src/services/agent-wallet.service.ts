@@ -52,7 +52,7 @@ class AgentWalletService {
       encryptedSecret
     );
 
-    events.log('info', 'AgentWallet', `Created agent wallet for ${userPublicKey.slice(0, 8)}...`);
+    events.log('info', 'AgentWallet', `Created agent wallet for ${userPublicKey.slice(0, 8)}...`, undefined, userPublicKey);
 
     return {
       userPublicKey: row.user_public_key,
@@ -110,7 +110,7 @@ class AgentWalletService {
     // Mark activated in DB
     walletStore.markActivated(userPublicKey);
 
-    events.log('info', 'AgentWallet', `Activated agent wallet for ${userPublicKey.slice(0, 8)}...`);
+    events.log('info', 'AgentWallet', `Activated agent wallet for ${userPublicKey.slice(0, 8)}...`, undefined, userPublicKey);
 
     return { activated: true, agentPublicKey: row.agent_public_key };
   }
@@ -142,7 +142,7 @@ class AgentWalletService {
     const txHash = await stellarService.buildAndSubmitWithdrawTx(keypair, userPublicKey, amount);
 
     const newBalance = await stellarService.getBalance(row.agent_public_key);
-    events.log('info', 'AgentWallet', `Withdrew ${amount} USDC to ${userPublicKey.slice(0, 8)}...`);
+    events.log('info', 'AgentWallet', `Withdrew ${amount} USDC to ${userPublicKey.slice(0, 8)}...`, undefined, userPublicKey);
 
     return { txHash, newBalance };
   }

@@ -44,7 +44,7 @@ export async function decomposeTask(
           content: `You are a task decomposition agent for an X402 payment gateway. Given a user task and available paid APIs, break the task into 2-5 sequential steps.
 
 CRITICAL RULES:
-1. apiEndpoint MUST start with "/{slug}/" where {slug} is the EXACT slug field from the available API list below. The slug is a short identifier like "worldtime", "coingecko", "open-meteo", etc. NEVER use a sub-path as the first segment.
+1. apiEndpoint MUST start with "/{slug}/" where {slug} is the EXACT slug field from the available API list below. The slug is a short identifier like "worldtime", "dexscreener", "open-meteo", etc. NEVER use a sub-path as the first segment.
 2. After the slug comes the sub-path from the API's examplePaths. So if slug="worldtime" and examplePath="/timezone/America/New_York", the apiEndpoint is "/worldtime/timezone/America/New_York".
 3. Query parameters go in the "queryParams" object, NOT in the apiEndpoint string
 4. Use the examplePaths to understand what sub-paths each API supports — copy the pattern exactly
@@ -61,7 +61,7 @@ CRITICAL RULES:
 
 EXAMPLES OF CORRECT apiEndpoint FORMAT:
 - "/worldtime/time/current/zone" with queryParams {"timeZone":"America/New_York"} (slug=worldtime)
-- "/coingecko/simple/price" (slug=coingecko)
+- "/dexscreener/latest/dex/search" (slug=dexscreener)
 - "/open-meteo/forecast" (slug=open-meteo)
 - "/hackernews/topstories.json" (slug=hackernews)
 - "/countries/name/united+states" (slug=countries)

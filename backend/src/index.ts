@@ -69,7 +69,7 @@ wss.on('connection', (ws, req) => {
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const userPublicKey = url.searchParams.get('userPublicKey') || undefined;
   events.addClient(ws, userPublicKey);
-  events.log('info', 'WebSocket', 'Client connected');
+  events.log('info', 'WebSocket', 'Client connected', undefined, userPublicKey);
 });
 
 server.listen(config.port, () => {

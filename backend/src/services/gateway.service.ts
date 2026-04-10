@@ -69,7 +69,7 @@ class GatewayService {
           owner,
         });
         const claimed = store.getApiBySlug(normalizedSlug)!;
-        events.log('info', 'Gateway', `Claimed catalog API: ${claimed.name} by ${owner} (${price} USDC/call)`);
+        events.log('info', 'Gateway', `Claimed catalog API: ${claimed.name} by ${owner} (${price} USDC/call)`, undefined, owner);
         return claimed;
       }
       throw new Error(`Slug "${normalizedSlug}" is already registered`);
@@ -90,13 +90,13 @@ class GatewayService {
     };
 
     store.addApi(api);
-    events.log('info', 'Gateway', `Registered API: ${api.name} at /x402/${normalizedSlug}/* (${price} USDC/call)`);
+    events.log('info', 'Gateway', `Registered API: ${api.name} at /x402/${normalizedSlug}/* (${price} USDC/call)`, undefined, owner);
     return api;
   }
 
   /**
    * Parse a full request path into slug + sub-path + query params.
-   * e.g. "/coingecko/simple/price?ids=bitcoin" → { slug: "coingecko", subPath: "/simple/price", queryParams: { ids: "bitcoin" } }
+    * e.g. "/dexscreener/latest/dex/search?q=bitcoin" → { slug: "dexscreener", subPath: "/latest/dex/search", queryParams: { q: "bitcoin" } }
    */
   private parseRequestPath(path: string): { slug: string; subPath: string; queryParams: Record<string, string> } | null {
     const cleaned = path.startsWith('/') ? path.slice(1) : path;
@@ -149,7 +149,7 @@ class GatewayService {
       const payment = stellarService.createPaymentRequest(api.id, api.name, api.price, api.receiverAddress, userPublicKey);
       events.log('payment', 'Gateway', `402 Payment Required for ${api.name}${parsed.subPath}: ${api.price} USDC`, {
         paymentId: payment.id,
-      });
+      }, userPublicKey);
       return {
         status: 402,
         body: {
@@ -194,7 +194,7 @@ class GatewayService {
       // Upstream returned 4xx — pass through the error but consume the payment
       // (bad request is the caller's fault, not a retryable failure)
       if (result.upstreamStatus && result.upstreamStatus >= 400) {
-        events.log('warn', 'Gateway', `Upstream ${api.name}${parsed.subPath} returned ${result.upstreamStatus}`);
+        events.log('warn', 'Gateway', `Upstream ${api.name}${parsed.subPath} returned ${result.upstreamStatus}`, undefined, payment.userPublicKey || userPublicKey);
         return { status: result.upstreamStatus, body: { error: 'Upstream API returned an error', upstreamStatus: result.upstreamStatus, upstreamResponse: result.data, paymentId } };
       }
 
@@ -202,12 +202,12 @@ class GatewayService {
         callCount: api.callCount + 1,
         totalRevenue: api.totalRevenue + api.price,
       });
-      events.log('info', 'Gateway', `Forwarded request to ${api.name}${parsed.subPath} (call #${api.callCount + 1})`);
+      events.log('info', 'Gateway', `Forwarded request to ${api.name}${parsed.subPath} (call #${api.callCount + 1})`, undefined, payment.userPublicKey || userPublicKey);
       return { status: 200, body: result.data };
     } catch (err: any) {
       // Revert payment to verified so the caller can retry without paying again
       store.updatePayment(paymentId, { status: 'verified' as any });
-      events.log('error', 'Gateway', `Failed to forward to ${api.baseUrl}${parsed.subPath}: ${err.message} (payment ${paymentId} restored for retry)`);
+      events.log('error', 'Gateway', `Failed to forward to ${api.baseUrl}${parsed.subPath}: ${err.message} (payment ${paymentId} restored for retry)`, undefined, payment.userPublicKey || userPublicKey);
       return { status: 502, body: { error: 'Upstream API error', message: err.message, paymentId, retryable: true } };
     }
   }

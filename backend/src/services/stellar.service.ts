@@ -204,7 +204,7 @@ class StellarService {
 
     // Now mint
     const txHash = await this.mintUsdc(publicKey, amount);
-    events.log('info', 'Faucet', `Minted ${amount} USDC to ${publicKey.slice(0, 8)}...`);
+    events.log('info', 'Faucet', `Minted ${amount} USDC to ${publicKey.slice(0, 8)}...`, undefined, publicKey);
     return txHash;
   }
 
@@ -292,6 +292,7 @@ class StellarService {
   async submitSignedTransaction(signedTxXdr: string, paymentId: string): Promise<string> {
     store.updatePayment(paymentId, { status: 'submitted' });
     this.emitPaymentUpdate(paymentId);
+    const userPublicKey = store.getPayment(paymentId)?.userPublicKey;
 
     try {
       const tx = StellarSdk.TransactionBuilder.fromXDR(
@@ -302,7 +303,7 @@ class StellarService {
       const txHash = result.hash;
 
       store.updatePayment(paymentId, { txHash });
-      events.log('payment', 'Stellar', `Transaction submitted: ${txHash}`);
+      events.log('payment', 'Stellar', `Transaction submitted: ${txHash}`, undefined, userPublicKey);
       this.emitPaymentUpdate(paymentId);
 
       return txHash;
@@ -333,6 +334,7 @@ class StellarService {
       taskId: taskId || null,
     });
     this.emitPaymentUpdate(paymentId);
+    const userPublicKey = store.getPayment(paymentId)?.userPublicKey;
 
     try {
       const account = await this.server.loadAccount(keypair.publicKey());
@@ -357,7 +359,7 @@ class StellarService {
       const txHash = result.hash;
 
       store.updatePayment(paymentId, { txHash });
-      events.log('payment', 'Stellar', `Agent transaction submitted: ${txHash}`, { amount, memo });
+      events.log('payment', 'Stellar', `Agent transaction submitted: ${txHash}`, { amount, memo }, userPublicKey);
       this.emitPaymentUpdate(paymentId);
 
       return txHash;
@@ -397,7 +399,7 @@ class StellarService {
       // Exact memo match (memos are truncated to 28 chars when building TX)
       const expectedMemo = payment.memo.slice(0, 28);
       if (!tx.memo || tx.memo !== expectedMemo) {
-        events.log('error', 'Stellar', `Memo mismatch for ${paymentId}: expected=${expectedMemo}, got=${tx.memo}`);
+        events.log('error', 'Stellar', `Memo mismatch for ${paymentId}: expected=${expectedMemo}, got=${tx.memo}`, undefined, payment.userPublicKey);
         return false;
       }
 
@@ -412,7 +414,7 @@ class StellarService {
       );
 
       if (!paymentOp) {
-        events.log('error', 'Stellar', `No matching payment operation for ${paymentId}: expected ${payment.amount} USDC to ${payment.destinationAddress.slice(0, 8)}...`);
+        events.log('error', 'Stellar', `No matching payment operation for ${paymentId}: expected ${payment.amount} USDC to ${payment.destinationAddress.slice(0, 8)}...`, undefined, payment.userPublicKey);
         return false;
       }
 
@@ -423,11 +425,11 @@ class StellarService {
       events.log('payment', 'Stellar', `Payment verified: ${paymentId}`, {
         txHash: payment.txHash,
         amount: payment.amount,
-      });
+      }, payment.userPublicKey);
       this.emitPaymentUpdate(paymentId);
       return true;
     } catch (err: any) {
-      events.log('error', 'Stellar', `Verification failed for ${paymentId}: ${err.message}`);
+      events.log('error', 'Stellar', `Verification failed for ${paymentId}: ${err.message}`, undefined, payment.userPublicKey);
       return false;
     }
   }

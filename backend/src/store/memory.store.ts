@@ -34,7 +34,7 @@ interface TaskRow {
 
 interface LogRow {
   id: number; timestamp: string; level: string; source: string;
-  message: string; data: string | null;
+  message: string; user_public_key: string; data: string | null;
 }
 
 function rowToApi(r: ApiRow): RegisteredAPI {
@@ -74,6 +74,7 @@ function rowToLog(r: LogRow): LogEntry {
   return {
     timestamp: r.timestamp, level: r.level as LogEntry['level'],
     source: r.source, message: r.message,
+    ...(r.user_public_key ? { userPublicKey: r.user_public_key } : {}),
     ...(r.data != null ? { data: safeParse(r.data, undefined) } : {}),
   };
 }
@@ -209,6 +210,7 @@ class Store {
         level TEXT NOT NULL,
         source TEXT NOT NULL,
         message TEXT NOT NULL,
+        user_public_key TEXT NOT NULL DEFAULT '',
         data TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
@@ -220,6 +222,14 @@ class Store {
     try {
       this.db.exec(`ALTER TABLE payments ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
       console.log('[Store] Migrated payments table: added user_public_key');
+    } catch {
+      // Column already exists
+    }
+
+    // Migration: add user_public_key to logs if missing
+    try {
+      this.db.exec(`ALTER TABLE logs ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
+      console.log('[Store] Migrated logs table: added user_public_key');
     } catch {
       // Column already exists
     }
@@ -446,10 +456,11 @@ class Store {
 
   addLog(entry: LogEntry): void {
     this.db.prepare(`
-      INSERT INTO logs (timestamp, level, source, message, data)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO logs (timestamp, level, source, message, user_public_key, data)
+      VALUES (?, ?, ?, ?, ?, ?)
     `).run(
       entry.timestamp, entry.level, entry.source, entry.message,
+      entry.userPublicKey || '',
       entry.data != null ? JSON.stringify(entry.data) : null,
     );
 
@@ -466,6 +477,16 @@ class Store {
     const rows = this.db.prepare(
       'SELECT * FROM logs ORDER BY id DESC LIMIT ?'
     ).all(count) as LogRow[];
+    return rows.map(rowToLog).reverse();
+  }
+
+  getRecentLogsByUser(userPublicKey: string, count: number = 50): LogEntry[] {
+    const rows = this.db.prepare(
+      `SELECT * FROM logs
+       WHERE user_public_key = ?
+       ORDER BY id DESC
+       LIMIT ?`
+    ).all(userPublicKey, count) as LogRow[];
     return rows.map(rowToLog).reverse();
   }
 

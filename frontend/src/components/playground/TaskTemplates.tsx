@@ -14,8 +14,8 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     id: 'crypto-snapshot',
     icon: <TrendingUp className="w-4 h-4 text-accent" />,
     title: 'Crypto Market Snapshot',
-    description: 'Fetch BTC, ETH, XLM prices via CoinGecko and summarize market trends.',
-    prompt: 'Use the coingecko API to get current prices for Bitcoin, Ethereum, and Stellar Lumens in USD, then provide a brief market analysis with trends.',
+    description: 'Fetch BTC, ETH, XLM market pairs via Dexscreener and summarize market trends.',
+    prompt: 'Use the dexscreener API to find current market data for Bitcoin, Ethereum, and Stellar (XLM), then provide a brief market analysis with trends and liquidity context.',
   },
   {
     id: 'weather-report',
@@ -43,7 +43,7 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     icon: <ShieldCheck className="w-4 h-4 text-accent" />,
     title: 'Wikipedia Cross-Check',
     description: 'Fetch a Wikipedia summary and verify facts against live market data.',
-    prompt: 'Use the wikipedia API to get a summary of Stellar (payment network), then use the coingecko API to verify its current market data. Produce a fact-checked report.',
+    prompt: 'Use the wikipedia API to get a summary of Stellar (payment network), then use the dexscreener API to verify current market activity for XLM. Produce a fact-checked report.',
   },
   {
     id: 'multi-api-analysis',

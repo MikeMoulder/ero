@@ -362,7 +362,7 @@ export default function GatewayPanel() {
               <Input label="Base URL" placeholder="https://api.example.com" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required />
             </div>
             <div className="md:col-span-3">
-              <Input label="Slug" placeholder="coingecko" value={slug} onChange={(e) => setSlug(e.target.value)} required />
+              <Input label="Slug" placeholder="dexscreener" value={slug} onChange={(e) => setSlug(e.target.value)} required />
             </div>
             <div className="md:col-span-2">
               <Input label="Price (USDC)" type="number" step="0.001" min="0.001" placeholder="0.05" value={price} onChange={(e) => setPrice(e.target.value)} required />

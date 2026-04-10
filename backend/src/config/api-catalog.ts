@@ -16,15 +16,15 @@ export const API_CATALOG: CatalogEntry[] = [
   //  CRYPTO / FINANCE
   // ═══════════════════════════════════════════════════════════════
   {
-    baseUrl: 'https://api.coingecko.com/api/v3',
-    slug: 'coingecko',
+    baseUrl: 'https://api.dexscreener.com',
+    slug: 'dexscreener',
     price: 0.01,
     category: 'Crypto/Finance',
-    description: 'Cryptocurrency price data, market caps, volume, and trending coins from CoinGecko.',
+    description: 'Dex Screener market data for DEX pairs, token price discovery, liquidity, and volume across chains.',
     examplePaths: [
-      '/simple/price?ids=bitcoin,ethereum,stellar&vs_currencies=usd',
-      '/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1',
-      '/search/trending',
+      '/latest/dex/search?q=XLM',
+      '/latest/dex/search?q=ETH',
+      '/latest/dex/tokens/0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
     ],
   },
   {
@@ -1598,13 +1598,13 @@ export const API_CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    baseUrl: 'https://api.coingecko.com/api/v3/search',
-    slug: 'coingecko-search',
+    baseUrl: 'https://api.dexscreener.com/latest/dex/search',
+    slug: 'dexscreener-search',
     price: 0.01,
     category: 'Crypto/Finance',
-    description: 'CoinGecko search: find coins, exchanges, categories by keyword.',
+    description: 'Dex Screener pair/token search by keyword or ticker.',
     examplePaths: [
-      '?query=stellar',
+      '?q=stellar',
     ],
   },
   {

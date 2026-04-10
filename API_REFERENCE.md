@@ -35,19 +35,19 @@ Copy-paste these into the **Register New API** form on the Gateway page, then hi
 
 ---
 
-### 2. CoinGecko (Crypto Prices)
+### 2. Dexscreener (DEX Market Data)
 
 | Field | Value |
 |-------|-------|
-| Base URL | `https://api.coingecko.com/api/v3` |
-| Slug | `coingecko` |
+| Base URL | `https://api.dexscreener.com` |
+| Slug | `dexscreener` |
 | Price | `0.01` |
 
 **Try It sub-paths:**
 ```
-/simple/price?ids=bitcoin,ethereum,stellar&vs_currencies=usd
-/search/trending
-/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=5&page=1
+/latest/dex/search?q=bitcoin
+/latest/dex/search?q=ethereum
+/latest/dex/search?q=stellar
 ```
 
 ---

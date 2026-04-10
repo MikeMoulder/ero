@@ -78,6 +78,7 @@ export interface LogEntry {
   level: 'info' | 'warn' | 'error' | 'payment' | 'agent';
   source: string;
   message: string;
+  userPublicKey?: string;
   data?: any;
 }
 

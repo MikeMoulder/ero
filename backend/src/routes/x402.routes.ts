@@ -22,7 +22,7 @@ x402Router.post('/prepare-payment', sensitiveLimiter, async (req, res) => {
     }
 
     const paymentInfo = response.body;
-    events.log('payment', 'Gateway', `Preparing payment for ${wrappedPath}: ${paymentInfo.amount} USDC`);
+    events.log('payment', 'Gateway', `Preparing payment for ${wrappedPath}: ${paymentInfo.amount} USDC`, undefined, sourcePublicKey);
 
     // Build unsigned TX
     const unsignedTxXdr = await stellarService.buildUnsignedPaymentTx(

@@ -135,7 +135,7 @@ dashboardRouter.get('/stats', (req, res) => {
     overview,
     gateway,
     playground,
-    recentLogs: store.getRecentLogs(30),
+    recentLogs: userPublicKey ? store.getRecentLogsByUser(userPublicKey, 30) : store.getRecentLogs(30),
     recentPayments: payments.slice(0, 10),
   };
 

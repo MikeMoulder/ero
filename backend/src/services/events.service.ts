@@ -87,16 +87,35 @@ class EventsService {
     }
   }
 
-  log(level: LogEntry['level'], source: string, message: string, data?: any): void {
+  /** Broadcast only to anonymous clients (no userPublicKey bound) */
+  private broadcastAnonymous(event: WSEvent): void {
+    const data = JSON.stringify(event);
+    for (const client of this.anonymousClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data);
+      }
+    }
+  }
+
+  log(level: LogEntry['level'], source: string, message: string, data?: any, userPublicKey?: string): void {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       source,
       message,
+      ...(userPublicKey ? { userPublicKey } : {}),
       data,
     };
     store.addLog(entry);
-    this.broadcast({ type: 'log', payload: entry });
+
+    // Authenticated clients only receive logs scoped to their own public key.
+    if (userPublicKey) {
+      this.sendToUser(userPublicKey, { type: 'log', payload: entry });
+      return;
+    }
+
+    // System/global logs are limited to anonymous clients.
+    this.broadcastAnonymous({ type: 'log', payload: entry });
   }
 
   stopHeartbeat(): void {
