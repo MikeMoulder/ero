@@ -1,0 +1,107 @@
+/* ============================================================================
+   ero. Typography — Syne (display) + Martian Mono (body/data)
+   Fonts loaded via <link> in index.html
+   ============================================================================ */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body, html {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-400);
+}
+
+/* Headings — Syne display */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-700);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-4);
+  color: var(--color-text-primary);
+}
+
+h1 { font-size: var(--font-size-5xl); font-weight: var(--font-weight-800); }
+h2 { font-size: var(--font-size-4xl); }
+h3 { font-size: var(--font-size-3xl); }
+h4 { font-size: var(--font-size-2xl); }
+h5 { font-size: var(--font-size-xl); }
+h6 { font-size: var(--font-size-lg); }
+
+p {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-300);
+  line-height: 1.7;
+  margin-bottom: var(--space-4);
+  color: var(--color-text-secondary);
+}
+
+p:last-child { margin-bottom: 0; }
+
+a {
+  color: var(--color-accent-primary);
+  text-decoration: none;
+  font-weight: var(--font-weight-500);
+  transition: color var(--transition-fast);
+}
+
+a:hover { color: var(--color-accent-primary-hover); }
+
+a:focus {
+  outline: 1px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+strong, b { font-weight: var(--font-weight-600); }
+em, i { font-style: italic; }
+small { font-size: var(--font-size-xs); }
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-400);
+}
+
+code {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-accent-primary);
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  padding: var(--space-4);
+  overflow-x: auto;
+  margin-bottom: var(--space-4);
+}
+
+pre code {
+  background-color: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+ul, ol { padding-left: var(--space-8); margin-bottom: var(--space-4); }
+li { margin-bottom: var(--space-2); }
+
+label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-500);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+blockquote {
+  border-left: 2px solid var(--color-accent-primary);
+  padding-left: var(--space-4);
+  font-style: italic;
+  color: var(--color-text-secondary);
+  margin: var(--space-4) 0;
+}
