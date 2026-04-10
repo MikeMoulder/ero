@@ -20,6 +20,9 @@ import { seedApis } from './services/seed.service';
 
 const app = express();
 
+// Trust reverse proxy (Render, etc.)
+app.set('trust proxy', 1);
+
 // Initialize SQLite stores
 walletStore.initialize();
 store.initialize();
