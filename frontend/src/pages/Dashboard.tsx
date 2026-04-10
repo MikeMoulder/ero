@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { useApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useWallet } from '../context/WalletContext';
 import { EnhancedDashboardStats, LogEntry, WSEvent } from '../types';
 import { OverviewBar } from '../components/dashboard/OverviewBar';
 import { GatewaySection } from '../components/dashboard/GatewaySection';
@@ -10,8 +11,10 @@ import { ActivityFeed } from '../components/dashboard/ActivityFeed';
 import { RecentPayments } from '../components/dashboard/RecentPayments';
 
 export default function Dashboard() {
+  const wallet = useWallet();
   const { data: stats, setData: setStats } = useApi<EnhancedDashboardStats>(
-    () => api.getStats() as Promise<EnhancedDashboardStats>
+    () => api.getStats(wallet.publicKey || undefined) as Promise<EnhancedDashboardStats>,
+    [wallet.publicKey]
   );
   const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);
 
@@ -35,7 +38,7 @@ export default function Dashboard() {
     }
   }, [setStats]);
 
-  useWebSocket(handleWS);
+  useWebSocket(handleWS, wallet.publicKey);
 
   const allLogs = [...(stats?.recentLogs || []), ...liveLogs];
   const uniqueLogs = allLogs.filter((log, i, arr) =>

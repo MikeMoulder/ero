@@ -127,7 +127,8 @@ class GatewayService {
   async handleWrappedRequest(
     wrappedPath: string,
     paymentId: string | undefined,
-    query: Record<string, any>
+    query: Record<string, any>,
+    userPublicKey: string = ''
   ): Promise<{ status: number; body: any }> {
     const parsed = this.parseRequestPath(wrappedPath);
     if (!parsed) {
@@ -145,7 +146,7 @@ class GatewayService {
 
     // No payment provided - return 402
     if (!paymentId) {
-      const payment = stellarService.createPaymentRequest(api.id, api.name, api.price, api.receiverAddress);
+      const payment = stellarService.createPaymentRequest(api.id, api.name, api.price, api.receiverAddress, userPublicKey);
       events.log('payment', 'Gateway', `402 Payment Required for ${api.name}${parsed.subPath}: ${api.price} USDC`, {
         paymentId: payment.id,
       });

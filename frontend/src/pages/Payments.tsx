@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { api } from '../services/api';
 import { useApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useWallet } from '../context/WalletContext';
 import { PaymentRequest, WSEvent } from '../types';
 import { Badge } from '../components/shared/Badge';
 
@@ -31,7 +32,11 @@ const statusVariant = (status: string) => {
 };
 
 export default function Payments() {
-  const { data: payments, setData } = useApi<PaymentRequest[]>(() => api.getPayments() as Promise<PaymentRequest[]>);
+  const wallet = useWallet();
+  const { data: payments, setData } = useApi<PaymentRequest[]>(
+    () => api.getPayments(wallet.publicKey || undefined) as Promise<PaymentRequest[]>,
+    [wallet.publicKey]
+  );
 
   const handleWS = useCallback((event: WSEvent) => {
     if (event.type === 'payment_update') {
@@ -48,7 +53,7 @@ export default function Payments() {
     }
   }, [setData]);
 
-  useWebSocket(handleWS);
+  useWebSocket(handleWS, wallet.publicKey);
 
   return (
     <div>

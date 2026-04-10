@@ -8,6 +8,18 @@ import { config } from '../config';
 
 class StellarService {
   private server: StellarSdk.Horizon.Server;
+
+  /** Emit a payment_update event scoped to the payment's owner */
+  private emitPaymentUpdate(paymentId: string): void {
+    const payment = store.getPayment(paymentId);
+    if (!payment) return;
+    const evt = { type: 'payment_update' as const, payload: payment };
+    if (payment.userPublicKey) {
+      events.sendToUser(payment.userPublicKey, evt);
+    } else {
+      events.broadcast(evt);
+    }
+  }
   private agentKeypair: StellarSdk.Keypair;
   private networkPassphrase: string;
 
@@ -198,7 +210,7 @@ class StellarService {
 
   // === Payment Request Creation ===
 
-  createPaymentRequest(apiId: string, apiName: string, amount: number, destinationAddress: string): PaymentRequest {
+  createPaymentRequest(apiId: string, apiName: string, amount: number, destinationAddress: string, userPublicKey: string = ''): PaymentRequest {
     const id = uuid();
     const payment: PaymentRequest = {
       id,
@@ -212,11 +224,12 @@ class StellarService {
       callerType: 'manual',
       agentId: null,
       taskId: null,
+      userPublicKey,
       createdAt: new Date().toISOString(),
       verifiedAt: null,
     };
     store.addPayment(payment);
-    events.broadcast({ type: 'payment_update', payload: payment });
+    this.emitPaymentUpdate(payment.id);
     return payment;
   }
 
@@ -278,7 +291,7 @@ class StellarService {
 
   async submitSignedTransaction(signedTxXdr: string, paymentId: string): Promise<string> {
     store.updatePayment(paymentId, { status: 'submitted' });
-    events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+    this.emitPaymentUpdate(paymentId);
 
     try {
       const tx = StellarSdk.TransactionBuilder.fromXDR(
@@ -290,12 +303,12 @@ class StellarService {
 
       store.updatePayment(paymentId, { txHash });
       events.log('payment', 'Stellar', `Transaction submitted: ${txHash}`);
-      events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+      this.emitPaymentUpdate(paymentId);
 
       return txHash;
     } catch (err: any) {
       store.updatePayment(paymentId, { status: 'failed' });
-      events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+      this.emitPaymentUpdate(paymentId);
       const detail = err?.response?.data?.extras?.result_codes || err.message;
       console.error('[Stellar] Submission failed:', JSON.stringify(detail));
       throw new Error('Stellar submission failed');
@@ -319,7 +332,7 @@ class StellarService {
       agentId: agentId || null,
       taskId: taskId || null,
     });
-    events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+    this.emitPaymentUpdate(paymentId);
 
     try {
       const account = await this.server.loadAccount(keypair.publicKey());
@@ -345,12 +358,12 @@ class StellarService {
 
       store.updatePayment(paymentId, { txHash });
       events.log('payment', 'Stellar', `Agent transaction submitted: ${txHash}`, { amount, memo });
-      events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+      this.emitPaymentUpdate(paymentId);
 
       return txHash;
     } catch (err: any) {
       store.updatePayment(paymentId, { status: 'failed' });
-      events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+      this.emitPaymentUpdate(paymentId);
       const detail = err?.response?.data?.extras?.result_codes || err.message;
       console.error('[Stellar] Agent payment failed:', JSON.stringify(detail));
       throw new Error('Agent payment failed');
@@ -411,7 +424,7 @@ class StellarService {
         txHash: payment.txHash,
         amount: payment.amount,
       });
-      events.broadcast({ type: 'payment_update', payload: store.getPayment(paymentId)! });
+      this.emitPaymentUpdate(paymentId);
       return true;
     } catch (err: any) {
       events.log('error', 'Stellar', `Verification failed for ${paymentId}: ${err.message}`);

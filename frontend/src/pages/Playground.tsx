@@ -153,7 +153,7 @@ export default function Playground() {
     }
   }, []);
 
-  useWebSocket(handleWS);
+  useWebSocket(handleWS, wallet.publicKey);
 
   const handleExecute = async () => {
     if (!prompt.trim() || !wallet.publicKey) return;

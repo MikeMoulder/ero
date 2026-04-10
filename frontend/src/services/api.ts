@@ -162,13 +162,18 @@ export const api = {
       body: JSON.stringify({ decision }),
     }),
 
-  getTasks: () => request<any[]>('/api/tasks'),
+  getTasks: (userPublicKey?: string) =>
+    request<any[]>(userPublicKey ? `/api/tasks?userPublicKey=${encodeURIComponent(userPublicKey)}` : '/api/tasks'),
 
   getTask: (id: string) => request(`/api/tasks/${id}`),
 
   // === Payments ===
-  getPayments: () => request<any[]>('/api/payments'),
+  getPayments: (userPublicKey?: string) =>
+    request<any[]>(userPublicKey ? `/api/payments?userPublicKey=${encodeURIComponent(userPublicKey)}` : '/api/payments'),
 
   // === Dashboard ===
-  getStats: () => request<import('../types').EnhancedDashboardStats>('/api/dashboard/stats'),
+  getStats: (userPublicKey?: string) =>
+    request<import('../types').EnhancedDashboardStats>(
+      userPublicKey ? `/api/dashboard/stats?userPublicKey=${encodeURIComponent(userPublicKey)}` : '/api/dashboard/stats'
+    ),
 };

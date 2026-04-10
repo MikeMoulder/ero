@@ -4,7 +4,7 @@ import { WSEvent } from '../types';
 const MAX_RECONNECT_DELAY = 30000;
 const BASE_RECONNECT_DELAY = 1000;
 
-export function useWebSocket(onEvent: (event: WSEvent) => void) {
+export function useWebSocket(onEvent: (event: WSEvent) => void, userPublicKey?: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const onEventRef = useRef(onEvent);
   const retriesRef = useRef(0);
@@ -12,7 +12,8 @@ export function useWebSocket(onEvent: (event: WSEvent) => void) {
 
   const connect = useCallback(() => {
     const wsBase = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
-    const ws = new WebSocket(`${wsBase}/ws`);
+    const query = userPublicKey ? `?userPublicKey=${encodeURIComponent(userPublicKey)}` : '';
+    const ws = new WebSocket(`${wsBase}/ws${query}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -38,7 +39,7 @@ export function useWebSocket(onEvent: (event: WSEvent) => void) {
     ws.onerror = () => {
       ws.close();
     };
-  }, []);
+  }, [userPublicKey]);
 
   useEffect(() => {
     connect();

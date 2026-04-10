@@ -65,7 +65,10 @@ wss.on('connection', (ws, req) => {
     ws.close(4003, 'Origin not allowed');
     return;
   }
-  events.addClient(ws);
+  // Extract userPublicKey from query string (e.g. /ws?userPublicKey=G...)
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const userPublicKey = url.searchParams.get('userPublicKey') || undefined;
+  events.addClient(ws, userPublicKey);
   events.log('info', 'WebSocket', 'Client connected');
 });
 

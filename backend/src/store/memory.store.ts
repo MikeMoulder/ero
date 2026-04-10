@@ -22,6 +22,7 @@ interface PaymentRow {
   destination_address: string; memo: string; status: string;
   tx_hash: string | null; caller_type: string;
   agent_id: string | null; task_id: string | null;
+  user_public_key: string;
   created_at: string; verified_at: string | null;
 }
 
@@ -52,6 +53,7 @@ function rowToPayment(r: PaymentRow): PaymentRequest {
     status: r.status as PaymentRequest['status'],
     txHash: r.tx_hash, callerType: r.caller_type as PaymentRequest['callerType'],
     agentId: r.agent_id, taskId: r.task_id,
+    userPublicKey: r.user_public_key,
     createdAt: r.created_at, verifiedAt: r.verified_at,
   };
 }
@@ -91,7 +93,8 @@ const PAYMENT_FIELD_MAP: Record<string, string> = {
   id: 'id', apiId: 'api_id', apiName: 'api_name', amount: 'amount',
   destinationAddress: 'destination_address', memo: 'memo', status: 'status',
   txHash: 'tx_hash', callerType: 'caller_type', agentId: 'agent_id',
-  taskId: 'task_id', createdAt: 'created_at', verifiedAt: 'verified_at',
+  taskId: 'task_id', userPublicKey: 'user_public_key',
+  createdAt: 'created_at', verifiedAt: 'verified_at',
 };
 
 const TASK_FIELD_MAP: Record<string, string> = {
@@ -181,6 +184,7 @@ class Store {
         caller_type TEXT NOT NULL DEFAULT 'manual',
         agent_id TEXT,
         task_id TEXT,
+        user_public_key TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         verified_at TEXT
       );
@@ -211,6 +215,20 @@ class Store {
     `);
 
     console.log('[Store] SQLite initialized');
+
+    // Migration: add user_public_key to payments if missing (existing DBs)
+    try {
+      this.db.exec(`ALTER TABLE payments ADD COLUMN user_public_key TEXT NOT NULL DEFAULT ''`);
+      console.log('[Store] Migrated payments table: added user_public_key');
+    } catch {
+      // Column already exists
+    }
+
+    // Add user-scoped indexes
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_public_key);
+      CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_public_key);
+    `);
   }
 
   close(): void {
@@ -331,6 +349,11 @@ class Store {
     return rows.map(rowToApi);
   }
 
+  getApisByOwner(owner: string): RegisteredAPI[] {
+    const rows = this.db.prepare('SELECT * FROM apis WHERE owner = ?').all(owner) as ApiRow[];
+    return rows.map(rowToApi);
+  }
+
   removeApi(id: string): boolean {
     const result = this.db.prepare('DELETE FROM apis WHERE id = ?').run(id);
     return result.changes > 0;
@@ -348,12 +371,13 @@ class Store {
 
   addPayment(payment: PaymentRequest): void {
     this.db.prepare(`
-      INSERT INTO payments (id, api_id, api_name, amount, destination_address, memo, status, tx_hash, caller_type, agent_id, task_id, created_at, verified_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO payments (id, api_id, api_name, amount, destination_address, memo, status, tx_hash, caller_type, agent_id, task_id, user_public_key, created_at, verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       payment.id, payment.apiId, payment.apiName, payment.amount,
       payment.destinationAddress, payment.memo, payment.status,
       payment.txHash, payment.callerType, payment.agentId, payment.taskId,
+      payment.userPublicKey,
       payment.createdAt, payment.verifiedAt,
     );
   }
@@ -365,6 +389,11 @@ class Store {
 
   getAllPayments(): PaymentRequest[] {
     const rows = this.db.prepare('SELECT * FROM payments ORDER BY created_at DESC').all() as PaymentRow[];
+    return rows.map(rowToPayment);
+  }
+
+  getPaymentsByUser(userPublicKey: string): PaymentRequest[] {
+    const rows = this.db.prepare('SELECT * FROM payments WHERE user_public_key = ? ORDER BY created_at DESC').all(userPublicKey) as PaymentRow[];
     return rows.map(rowToPayment);
   }
 
@@ -397,6 +426,11 @@ class Store {
 
   getAllTasks(): Task[] {
     const rows = this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all() as TaskRow[];
+    return rows.map(rowToTask);
+  }
+
+  getTasksByUser(userPublicKey: string): Task[] {
+    const rows = this.db.prepare('SELECT * FROM tasks WHERE user_public_key = ? ORDER BY created_at DESC').all(userPublicKey) as TaskRow[];
     return rows.map(rowToTask);
   }
 

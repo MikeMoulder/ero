@@ -27,7 +27,11 @@ tasksRouter.post('/', sensitiveLimiter, (req, res) => {
   }
 });
 
-tasksRouter.get('/', (_req, res) => {
+tasksRouter.get('/', (req, res) => {
+  const userPublicKey = req.query.userPublicKey as string | undefined;
+  if (userPublicKey) {
+    return res.json(store.getTasksByUser(userPublicKey));
+  }
   res.json(store.getAllTasks());
 });
 

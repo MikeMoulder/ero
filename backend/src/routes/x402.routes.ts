@@ -16,7 +16,7 @@ x402Router.post('/prepare-payment', sensitiveLimiter, async (req, res) => {
     }
 
     // Get 402 response with payment info
-    const response = await gatewayService.handleWrappedRequest(wrappedPath, undefined, {});
+    const response = await gatewayService.handleWrappedRequest(wrappedPath, undefined, {}, sourcePublicKey);
     if (response.status !== 402) {
       return res.json({ step: 'already_accessible', response: response.body });
     }

@@ -3,7 +3,11 @@ import { store } from '../store/memory.store';
 
 export const paymentsRouter = Router();
 
-paymentsRouter.get('/', (_req, res) => {
+paymentsRouter.get('/', (req, res) => {
+  const userPublicKey = req.query.userPublicKey as string | undefined;
+  if (userPublicKey) {
+    return res.json(store.getPaymentsByUser(userPublicKey));
+  }
   res.json(store.getAllPayments());
 });
 

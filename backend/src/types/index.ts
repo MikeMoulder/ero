@@ -28,6 +28,7 @@ export interface PaymentRequest {
   callerType: 'manual' | 'agent';
   agentId: string | null;
   taskId: string | null;
+  userPublicKey: string;
   createdAt: string;
   verifiedAt: string | null;
 }

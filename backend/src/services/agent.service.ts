@@ -35,7 +35,7 @@ class AgentService {
     };
     store.addTask(task);
     events.log('info', 'Orchestrator', `Task created: "${prompt}"`);
-    events.broadcast({ type: 'task_update', payload: task });
+    events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     return task;
   }
 
@@ -47,7 +47,7 @@ class AgentService {
       // Phase 1: Decompose
       task.status = 'decomposing';
       store.updateTask(taskId, { status: 'decomposing' });
-      events.broadcast({ type: 'task_update', payload: task });
+      events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
       events.log('agent', 'Orchestrator', 'Decomposing task into steps...');
 
       const apis = store.getAllApis();
@@ -106,7 +106,7 @@ class AgentService {
         events.log('info', 'Orchestrator', 'Auto-approved (Approve Always is active)');
         task.status = 'executing';
         store.updateTask(taskId, { status: 'executing' });
-        events.broadcast({ type: 'task_update', payload: task });
+        events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
         // Fire-and-forget execution
         this.runExecution(taskId).catch(err => {
           console.error(`[Task ${taskId}] Execution error:`, err.message);
@@ -117,9 +117,9 @@ class AgentService {
       // Wait for user approval
       task.status = 'awaiting_approval';
       store.updateTask(taskId, { status: 'awaiting_approval' });
-      events.broadcast({ type: 'task_update', payload: task });
+      events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
 
-      events.broadcast({
+      events.sendToUser(task.userPublicKey, {
         type: 'approval_required',
         payload: {
           taskId,
@@ -132,7 +132,7 @@ class AgentService {
       task.status = 'failed';
       store.updateTask(taskId, { status: 'failed' });
       events.log('error', 'Orchestrator', `Decomposition failed: ${err.message}`);
-      events.broadcast({ type: 'task_update', payload: task });
+      events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     }
   }
 
@@ -145,7 +145,7 @@ class AgentService {
       task.status = 'failed';
       store.updateTask(taskId, { status: 'failed' });
       events.log('info', 'Orchestrator', 'Task denied by user');
-      events.broadcast({ type: 'task_update', payload: task });
+      events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
       return;
     }
 
@@ -157,7 +157,7 @@ class AgentService {
     events.log('info', 'Orchestrator', 'Task approved — starting execution');
     task.status = 'executing';
     store.updateTask(taskId, { status: 'executing' });
-    events.broadcast({ type: 'task_update', payload: task });
+    events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     await this.runExecution(taskId);
   }
 
@@ -183,7 +183,7 @@ class AgentService {
       for (const step of task.steps) {
         step.status = 'in_progress';
         step.startedAt = new Date().toISOString();
-        events.broadcast({ type: 'step_update', payload: { taskId, step, agents: task.agents } });
+        events.sendToUser(task.userPublicKey, { type: 'step_update', payload: { taskId, step, agents: task.agents } });
 
         const agent = task.agents.find(a => a.id === step.agentId)!;
         agent.status = 'working';
@@ -203,8 +203,8 @@ class AgentService {
             task.status = 'failed';
             store.updateTask(taskId, { status: 'failed', steps: task.steps, agents: task.agents });
             events.log('error', agent.name, `Step failed: ${err.message}`);
-            events.broadcast({ type: 'step_update', payload: { taskId, step, agents: task.agents } });
-            events.broadcast({ type: 'task_update', payload: task });
+            events.sendToUser(task.userPublicKey, { type: 'step_update', payload: { taskId, step, agents: task.agents } });
+            events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
             return;
           }
         }
@@ -225,7 +225,7 @@ class AgentService {
 
         store.updateTask(taskId, { steps: task.steps, agents: task.agents });
         events.log('agent', agent.name, `Completed: ${step.description}`);
-        events.broadcast({ type: 'step_update', payload: { taskId, step, agents: task.agents } });
+        events.sendToUser(task.userPublicKey, { type: 'step_update', payload: { taskId, step, agents: task.agents } });
       }
 
       // Task complete
@@ -234,12 +234,12 @@ class AgentService {
       task.completedAt = new Date().toISOString();
       store.updateTask(taskId, { status: 'completed', result: task.result, completedAt: task.completedAt, totalSpent: task.totalSpent });
       events.log('info', 'Orchestrator', `Task completed. Total spent: ${task.totalSpent.toFixed(4)} USDC`);
-      events.broadcast({ type: 'task_update', payload: task });
+      events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     } catch (err: any) {
       task.status = 'failed';
       store.updateTask(taskId, { status: 'failed' });
       events.log('error', 'Orchestrator', `Task failed: ${err.message}`);
-      events.broadcast({ type: 'task_update', payload: task });
+      events.sendToUser(task.userPublicKey, { type: 'task_update', payload: task });
     } finally {
       this.isExecuting = false;
     }
@@ -353,7 +353,7 @@ class AgentService {
     events.log('agent', agent.name, `Calling /x402${endpoint}...`);
 
     // First call - expect 402
-    let firstResponse = await gatewayService.handleWrappedRequest(endpoint, undefined, query);
+    let firstResponse = await gatewayService.handleWrappedRequest(endpoint, undefined, query, task.userPublicKey);
 
     // If 404, the LLM may have omitted the slug — try to fix
     if (firstResponse.status === 404) {
@@ -363,7 +363,7 @@ class AgentService {
         endpoint = fixed;
         step.apiEndpoint = fixed;
         store.updateTask(task.id, { steps: task.steps });
-        firstResponse = await gatewayService.handleWrappedRequest(endpoint, undefined, query);
+        firstResponse = await gatewayService.handleWrappedRequest(endpoint, undefined, query, task.userPublicKey);
       }
     }
 
@@ -427,7 +427,7 @@ class AgentService {
     task.totalSpent += paymentInfo.amount;
     store.updateTask(task.id, { agents: task.agents, totalSpent: task.totalSpent });
 
-    const apiResponse = await gatewayService.handleWrappedRequest(endpoint, paymentInfo.paymentId, query);
+    const apiResponse = await gatewayService.handleWrappedRequest(endpoint, paymentInfo.paymentId, query, task.userPublicKey);
     if (apiResponse.status === 200) {
       events.log('agent', agent.name, `API data received from /x402${endpoint}`);
       return apiResponse.body;
