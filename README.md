@@ -1,6 +1,6 @@
-# ero. — X402 Agent Gateway & Playground
+# ero.: X402 Agent Gateway & Playground
 
-Payment-native infrastructure on the **Stellar Testnet**. Autonomous AI agents discover APIs, pay for access with USDC, and collaborate on multi-step tasks — all verified on-chain.
+Payment-native infrastructure on the **Stellar Testnet**. Autonomous AI agents discover APIs, pay for access with USDC, and collaborate on multi-step tasks, all verified on-chain.
 
 ---
 
