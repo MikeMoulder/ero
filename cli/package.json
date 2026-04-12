@@ -1,0 +1,45 @@
+{
+  "name": "ero-x402",
+  "version": "1.0.1",
+  "description": "CLI for ero. — x402 Agent Gateway & Playground on Stellar",
+  "bin": {
+    "ero": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "stellar",
+    "x402",
+    "agents",
+    "usdc",
+    "api-gateway",
+    "cli",
+    "blockchain"
+  ],
+  "author": "Mike Moulder",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^11.0.0",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "ora": "^5.4.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  }
+}

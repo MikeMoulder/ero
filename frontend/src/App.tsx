@@ -3,6 +3,7 @@ import { WalletProvider } from './context/WalletContext';
 import { Layout } from './components/layout/Layout';
 import Home from './pages/Home';
 import ProductDetails from './pages/ProductDetails';
+import CLI from './pages/CLI';
 import Dashboard from './pages/Dashboard';
 import GatewayPanel from './pages/GatewayPanel';
 import Playground from './pages/Playground';
@@ -23,6 +24,7 @@ function App() {
             <Route path="/gateway" element={<GatewayPanel />} />
             <Route path="/playground" element={<Playground />} />
             <Route path="/payments" element={<Payments />} />
+            <Route path="/cli" element={<CLI />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -6,11 +6,21 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/x402': 'http://localhost:3001',
+      '/api': {
+        target: 'https://ero-72v4.onrender.com',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/x402': {
+        target: 'https://ero-72v4.onrender.com',
+        changeOrigin: true,
+        secure: false,
+      },
       '/ws': {
-        target: 'ws://localhost:3001',
+        target: 'wss://ero-72v4.onrender.com',
         ws: true,
+        changeOrigin: true,
+        secure: false,
       },
     },
   },

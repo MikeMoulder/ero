@@ -5,7 +5,7 @@ import { useWallet } from '../../context/WalletContext';
 import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import * as freighter from '../../services/freighter';
-import { LayoutDashboard, Server, Terminal, Wallet } from 'lucide-react';
+import { LayoutDashboard, Server, Terminal, Wallet, TerminalSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 function truncateAddress(address: string): string {
@@ -61,6 +61,7 @@ export function Navbar() {
         <NavItem to="/gateway" label="Gateway" icon={<Server size={13} />} />
         <NavItem to="/playground" label="Playground" icon={<Terminal size={13} />} />
         <NavItem to="/payments" label="Payments" icon={<Wallet size={13} />} />
+        <NavItem to="/cli" label="CLI" icon={<TerminalSquare size={13} />} />
       </div>
 
       {/* Spacer */}
