@@ -213,15 +213,15 @@ export const API_CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    baseUrl: 'https://www.reddit.com',
-    slug: 'reddit',
+    baseUrl: 'https://hacker-news.firebaseio.com/v0',
+    slug: 'hackernews',
     price: 0.01,
     category: 'News/Content',
-    description: 'Reddit public JSON feed. Append .json to any subreddit or post URL.',
+    description: 'Hacker News API. Top stories, new stories, and item details.',
     examplePaths: [
-      '/r/technology/top.json?limit=5&t=day',
-      '/r/programming/hot.json?limit=5',
-      '/r/stellar/new.json?limit=5',
+      '/topstories.json?limitToFirst=5&orderBy=%22$key%22',
+      '/newstories.json?limitToFirst=5&orderBy=%22$key%22',
+      '/item/1.json',
     ],
   },
   {
