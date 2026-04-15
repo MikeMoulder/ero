@@ -152,9 +152,9 @@ export async function executeAgentStep(
 ): Promise<string> {
   const rolePrompts: Record<string, string> = {
     data_retrieval: 'You are a data retrieval agent. Process and organize the raw data provided. Extract key information and present it clearly.',
-    summarization: 'You are a summarization agent. Create a concise, informative summary of the provided content. Highlight key points.',
+    summarization: 'You are a summarization agent. Create one concise final answer from all provided step results. If the user asked for multiple things, make sure every requested item is covered and do not focus only on the last result.',
     verification: 'You are a verification agent. Review the provided content for accuracy, completeness, and quality. Provide your assessment.',
-    analysis: 'You are an analysis agent. Analyze the provided data and draw insights. Present findings clearly.',
+    analysis: 'You are an analysis agent. Analyze all provided results together, draw insights, and answer the full request clearly.',
   };
 
   try {

@@ -167,6 +167,36 @@ class AgentService {
     return this.executionQueue;
   }
 
+  private buildStepInput(task: Task, currentStep: TaskStep, apiData: any, previousOutput: any): any {
+    // Preserve raw API payloads for retrieval steps so cross-step template
+    // resolution can still read fields directly from step.input.
+    if (apiData != null) {
+      return apiData;
+    }
+
+    const completedSteps = task.steps
+      .filter(step => step.index < currentStep.index && step.status === 'completed')
+      .map(step => ({
+        step: step.index + 1,
+        agent: step.agentName,
+        description: step.description,
+        apiEndpoint: step.apiEndpoint,
+        output: step.output,
+      }));
+
+    if (completedSteps.length > 0) {
+      return {
+        userRequest: task.prompt,
+        currentStep: currentStep.description,
+        latestResult: previousOutput,
+        completedSteps,
+        instruction: 'Use all completed step outputs to answer the full request. Do not focus only on the latest result.',
+      };
+    }
+
+    return previousOutput || task.prompt;
+  }
+
   private async _executeTask(taskId: string): Promise<void> {
     if (this.isExecuting) {
       throw new Error('Another task is already executing');
@@ -209,8 +239,8 @@ class AgentService {
           }
         }
 
-        // Execute agent reasoning
-        const input = apiData || previousOutput || task.prompt;
+        // Execute agent reasoning with full prior context for summarization/analysis steps
+        const input = this.buildStepInput(task, step, apiData, previousOutput);
         step.input = input;
 
         events.log('agent', agent.name, 'Processing...', undefined, task.userPublicKey);
